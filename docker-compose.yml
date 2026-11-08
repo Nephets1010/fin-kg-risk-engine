@@ -1,0 +1,108 @@
+# ---------------------------------------------------------------------------
+# fin-kg-risk-engine — local single-host deployment
+#
+#   cp .env.example .env && docker compose up -d
+#
+# Services:
+#   neo4j     the graph store
+#   redis     the event stream and job queue
+#   api       the FastAPI service
+#   worker    the scheduler process
+#
+# The API is exposed on http://localhost:8000, the docs on /docs.
+# ---------------------------------------------------------------------------
+
+name: fin-kg-risk-engine
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: fin-kg-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${FIN_KG_NEO4J_PASSWORD:-fin-kg-dev-password}
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: fin-kg-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fin-kg-api
+    restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      FIN_KG_ENV: ${FIN_KG_ENV:-development}
+      FIN_KG_NEO4J_URI: bolt://neo4j:7687
+      FIN_KG_NEO4J_PASSWORD: ${FIN_KG_NEO4J_PASSWORD:-fin-kg-dev-password}
+      FIN_KG_REDIS_URL: redis://:${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}@redis:6379/0
+    ports:
+      - "8000:8000"
+      - "9100:9100"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fin-kg-worker
+    restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      FIN_KG_ENV: ${FIN_KG_ENV:-development}
+      FIN_KG_NEO4J_URI: bolt://neo4j:7687
+      FIN_KG_NEO4J_PASSWORD: ${FIN_KG_NEO4J_PASSWORD:-fin-kg-dev-password}
+      FIN_KG_REDIS_URL: redis://:${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}@redis:6379/0
+    command: ["python", "-m", "fin_kg.worker"]
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  redis-data:

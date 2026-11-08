@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.cache
+
+# Type checking / linting
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+pyright/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime artifacts
+logs/
+*.log
+tmp/
+data/raw/
+data/staging/
+data/loaded/
+data/embeddings/
+data/checkpoints/
+data/local-graph.json
+data/local-graph.tmp
+*.mmap
+*.npy
+*.npz
+
+# Neo4j / Redis local volumes
+neo4j-data/
+neo4j-logs/
+neo4j-plugins/
+redis-data/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Secrets — never commit real credentials
+*.pem
+*.key
+!certs/**/*.example.pem
+secrets/
