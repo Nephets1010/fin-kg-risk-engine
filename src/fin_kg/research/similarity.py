@@ -105,8 +105,10 @@ class SimilarCaseFinder:
         )
         degree = len(edges)
 
-        risk_value = score.score if score is not None else float(
-            (snapshot.nodes.get(entity_id, {}) or {}).get("riskScore") or 0.0
+        risk_value = (
+            score.score
+            if score is not None
+            else float((snapshot.nodes.get(entity_id, {}) or {}).get("riskScore") or 0.0)
         )
         return np.array(
             [

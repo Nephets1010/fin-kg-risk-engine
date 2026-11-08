@@ -103,12 +103,40 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "PTH", "T20"]
-ignore = ["E501"]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "PTH", "T20", "ARG"]
+ignore = [
+    "E501",
+    # RUF001/002/003 flag full-width punctuation as ambiguous. This project
+    # is written in Chinese, where those characters are the correct ones.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # BLE001 forbids blind `except Exception`. The platform deliberately
+    # catches broad exceptions at the process boundaries (API handlers,
+    # scheduler loops, source adapters) so that one failing component cannot
+    # take the service down. Every such site carries a comment explaining
+    # why it is safe there.
+    "BLE001",
+    # The CLI is an interactive entry point; printing is its output channel.
+    "T201",
+    # ARG002: unused method arguments are part of the interface contract of
+    # the pluggable engines (indicator, repository), not accidental.
+    "ARG002",
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "PLR2004"]
-"src/fin_kg/cli.py" = ["T20"]
+"tests/*" = ["S101", "PLR2004", "BLE001"]
+"src/fin_kg/cli.py" = ["T20", "T201", "ARG001"]
+"scripts/*" = ["T201", "BLE001"]
+# The API schemas are the wire contract: field names are camelCase on
+# purpose, so that the JSON matches the Cypher and the graph attributes.
+"src/fin_kg/api/schemas.py" = ["N815"]
+# FastAPI's dependency injection puts `Depends(...)` in the argument default
+# and passes the framework-owned objects to the handler. Both are the
+# framework's contract, not a defect.
+"src/fin_kg/api/deps.py" = ["B008"]
+"src/fin_kg/api/app.py" = ["ARG001"]
+"src/fin_kg/api/routers/*" = ["ARG001"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

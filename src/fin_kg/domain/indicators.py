@@ -21,9 +21,9 @@ today can be compared with one computed six months ago.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
 
 
 class IndicatorDirection(str, Enum):
@@ -36,11 +36,11 @@ class IndicatorDirection(str, Enum):
 class IndicatorCategory(str, Enum):
     """Risk dimensions used to group indicators in the reporting views."""
 
-    LEGAL = "legal"            # 司法与合规
-    FINANCIAL = "financial"    # 财务与偿付
+    LEGAL = "legal"  # 司法与合规
+    FINANCIAL = "financial"  # 财务与偿付
     GOVERNANCE = "governance"  # 治理与关联
-    MARKET = "market"          # 市场与舆情
-    CHAIN = "chain"            # 传导与集中度
+    MARKET = "market"  # 市场与舆情
+    CHAIN = "chain"  # 传导与集中度
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,8 +184,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         unit="跳",
         description="以本主体为起点的担保链最长跳数",
         measurement_cypher=(
-            "MATCH p=(c:Company {id:$id})-[:GUARANTEE*1..5]->(t) "
-            "RETURN max(length(p)) AS value"
+            "MATCH p=(c:Company {id:$id})-[:GUARANTEE*1..5]->(t) RETURN max(length(p)) AS value"
         ),
         thresholds=((0, 0.0), (1, 20.0), (2, 45.0), (3, 70.0), (5, 100.0)),
     ),

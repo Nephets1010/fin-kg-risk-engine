@@ -84,7 +84,9 @@ class CsvSourceAdapter(SourceAdapter):
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             for index, row in enumerate(reader):
-                cleaned = {key: value for key, value in row.items() if key and value not in ("", None)}
+                cleaned = {
+                    key: value for key, value in row.items() if key and value not in ("", None)
+                }
                 if not cleaned:
                     continue
                 record_id = str(cleaned.get("id") or f"{path.stem}-{index}")
@@ -148,9 +150,7 @@ class SyntheticSourceAdapter(SourceAdapter):
         for index in range(self.companies):
             company_id = f"syn-c-{index:05d}"
             company_ids.append(company_id)
-            industry = rng.choice(
-                ["制造业", "金融", "房地产", "能源", "科技", "建筑工程", "贸易"]
-            )
+            industry = rng.choice(["制造业", "金融", "房地产", "能源", "科技", "建筑工程", "贸易"])
             records.append(
                 RawRecord(
                     kind=RecordKind.COMPANY,
@@ -163,7 +163,9 @@ class SyntheticSourceAdapter(SourceAdapter):
                         "reg_capital": rng.choice([500, 1_000, 5_000, 20_000]),
                         "industry": industry,
                         "status": rng.choice(["存续", "存续", "存续", "吊销"]),
-                        "founded_date": (today - timedelta(days=rng.randint(400, 6_000))).isoformat(),
+                        "founded_date": (
+                            today - timedelta(days=rng.randint(400, 6_000))
+                        ).isoformat(),
                         "region": rng.choice(["北京", "上海", "深圳", "杭州", "成都"]),
                     },
                     source_type=SourceType.SYNTHETIC,
@@ -340,7 +342,7 @@ class TushareSourceAdapter(SourceAdapter):
             response = httpx.post(self.base_url, json=payload, timeout=30.0)
             response.raise_for_status()
             body = response.json()
-        except Exception as exc:  # noqa: BLE001 - httpx raises several transport errors
+        except Exception as exc:  # httpx raises several transport errors
             raise IngestionError("tushare request failed", details={"error": str(exc)}) from exc
 
         if body.get("code") != 0:
@@ -353,7 +355,7 @@ class TushareSourceAdapter(SourceAdapter):
         fields = body.get("data", {}).get("fields", [])
         records: list[RawRecord] = []
         for item in items:
-            row = dict(zip(fields, item))
+            row = dict(zip(fields, item, strict=False))
             records.append(
                 RawRecord(
                     kind=RecordKind.COMPANY,
@@ -396,9 +398,7 @@ class JsonLinesSourceAdapter(SourceAdapter):
 
     def fetch(self, *, since: date | None = None, limit: int | None = None) -> FetchResult:
         if not self.path.exists():
-            raise IngestionError(
-                "jsonl file does not exist", details={"path": str(self.path)}
-            )
+            raise IngestionError("jsonl file does not exist", details={"path": str(self.path)})
         records: list[RawRecord] = []
         with self.path.open("r", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle):
@@ -410,7 +410,11 @@ class JsonLinesSourceAdapter(SourceAdapter):
                 except json.JSONDecodeError as exc:
                     raise IngestionError(
                         "malformed jsonl line",
-                        details={"path": str(self.path), "line": line_number + 1, "error": str(exc)},
+                        details={
+                            "path": str(self.path),
+                            "line": line_number + 1,
+                            "error": str(exc),
+                        },
                     ) from exc
                 records.append(
                     RawRecord(

@@ -44,9 +44,7 @@ def start_ingest(
     adapters = get_source_adapters()
     source = adapters.get(request.source)
     if source is None:
-        raise ValueError(
-            f"unknown source '{request.source}'; available: {sorted(adapters)}"
-        )
+        raise ValueError(f"unknown source '{request.source}'; available: {sorted(adapters)}")
 
     job = store.create("ingest")
 

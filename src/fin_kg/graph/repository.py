@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import abc
 from collections import defaultdict, deque
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from fin_kg.core.errors import GraphStoreError
 from fin_kg.domain.entities import GraphNode, node_to_properties
@@ -24,14 +25,10 @@ from fin_kg.domain.relations import RELATION_SCHEMA, Relation, RelationType
 
 #: Labels the platform is allowed to write. Cypher cannot parameterise labels,
 #: so every interpolated label must pass this whitelist first.
-ALLOWED_LABELS: frozenset[str] = frozenset(
-    {"Entity", "Company", "Person", "Event", "Product"}
-)
+ALLOWED_LABELS: frozenset[str] = frozenset({"Entity", "Company", "Person", "Event", "Product"})
 
 #: Relationship types the platform is allowed to write, same reason as above.
-ALLOWED_RELATION_TYPES: frozenset[str] = frozenset(
-    relation.value for relation in RelationType
-)
+ALLOWED_RELATION_TYPES: frozenset[str] = frozenset(relation.value for relation in RelationType)
 
 
 @dataclass(slots=True)
@@ -112,7 +109,9 @@ class GraphRepository(abc.ABC):
         """Enumerate paths from a node, bounded by ``max_hops``."""
 
     @abc.abstractmethod
-    def execute_read(self, cypher: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute_read(
+        self, cypher: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Run a read query and return the records."""
 
     @abc.abstractmethod
@@ -166,7 +165,11 @@ class InMemoryGraphRepository(GraphRepository):
                 if owner is not None and owner != node.id:
                     raise GraphStoreError(
                         "credit code already claimed by another company",
-                        details={"credit_code": credit_code, "existing": owner, "incoming": node.id},
+                        details={
+                            "credit_code": credit_code,
+                            "existing": owner,
+                            "incoming": node.id,
+                        },
                     )
                 self._credit_code_owner[credit_code] = node.id
             properties = node_to_properties(node)
@@ -188,9 +191,7 @@ class InMemoryGraphRepository(GraphRepository):
                     "relation target node does not exist",
                     details={"target_id": relation.target_id},
                 )
-            self.snapshot.add_edge(
-                relation.source_id, relation.target_id, relation.to_properties()
-            )
+            self.snapshot.add_edge(relation.source_id, relation.target_id, relation.to_properties())
             written += 1
         return written
 
@@ -238,8 +239,8 @@ class InMemoryGraphRepository(GraphRepository):
                     nxt = edge["target"] if edge["source"] == current else edge["source"]
                 if nxt in path_nodes:
                     continue
-                new_edges = path_edges + [edge]
-                new_nodes = path_nodes + [nxt]
+                new_edges = [*path_edges, edge]
+                new_nodes = [*path_nodes, nxt]
                 paths.append(
                     GraphPath(
                         nodes=[dict(self.snapshot.nodes[n]) for n in new_nodes],
@@ -251,7 +252,9 @@ class InMemoryGraphRepository(GraphRepository):
         expand([start_id], [])
         return paths
 
-    def execute_read(self, cypher: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute_read(
+        self, cypher: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Offline repository supports only the small set of queries it needs.
 
         Rather than shipping a Cypher engine, the offline repository answers
@@ -308,7 +311,7 @@ class FileGraphRepository(InMemoryGraphRepository):
 
     # -- persistence --------------------------------------------------------
 
-    def load(self) -> "FileGraphRepository":
+    def load(self) -> FileGraphRepository:
         """Read the snapshot from disk. A missing file is not an error."""
         if not self.path.exists():
             self._loaded = True
@@ -318,9 +321,7 @@ class FileGraphRepository(InMemoryGraphRepository):
         payload = json.loads(self.path.read_text(encoding="utf-8"))
         self.snapshot = GraphSnapshot(
             nodes=payload.get("nodes", {}),
-            node_labels={
-                key: set(value) for key, value in payload.get("nodeLabels", {}).items()
-            },
+            node_labels={key: set(value) for key, value in payload.get("nodeLabels", {}).items()},
             edges=payload.get("edges", []),
         )
         self._credit_code_owner = payload.get("creditCodes", {})
@@ -344,9 +345,7 @@ class FileGraphRepository(InMemoryGraphRepository):
             "creditCodes": self._credit_code_owner,
         }
         temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(self.path)
 
     # -- overrides ----------------------------------------------------------
@@ -396,7 +395,7 @@ class Neo4jGraphRepository(GraphRepository):
         self._batch_size = max(1, batch_size)
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "Neo4jGraphRepository":
+    def from_settings(cls, settings: Any) -> Neo4jGraphRepository:
         """Build a repository from the application settings."""
         from neo4j import GraphDatabase
 
@@ -421,7 +420,7 @@ class Neo4jGraphRepository(GraphRepository):
             with self._driver.session(database=self._database) as session:
                 result = session.run(cypher, parameters or {})
                 return [record.data() for record in result]
-        except Exception as exc:  # noqa: BLE001 - driver raises driver-specific errors
+        except Exception as exc:  # driver raises driver-specific errors
             raise GraphStoreError("graph store query failed", details={"error": str(exc)}) from exc
 
     def ensure_schema(self) -> None:
@@ -513,9 +512,7 @@ class Neo4jGraphRepository(GraphRepository):
         return len(rows)
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
-        rows = self._run(
-            "MATCH (n:Entity {id:$id}) RETURN n{.*} AS node LIMIT 1", {"id": node_id}
-        )
+        rows = self._run("MATCH (n:Entity {id:$id}) RETURN n{.*} AS node LIMIT 1", {"id": node_id})
         return rows[0]["node"] if rows else None
 
     def find_nodes(self, label: str, **filters: Any) -> list[dict[str, Any]]:
@@ -562,7 +559,9 @@ class Neo4jGraphRepository(GraphRepository):
             for row in rows
         ]
 
-    def execute_read(self, cypher: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute_read(
+        self, cypher: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         return self._run(cypher, parameters)
 
     def update_properties(self, node_id: str, properties: dict[str, Any]) -> bool:
@@ -575,8 +574,7 @@ class Neo4jGraphRepository(GraphRepository):
 
     def stats(self) -> dict[str, int]:
         node_rows = self._run(
-            "MATCH (n) UNWIND labels(n) AS label "
-            "RETURN label, count(*) AS total ORDER BY label"
+            "MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS total ORDER BY label"
         )
         rel_rows = self._run(
             "MATCH ()-[r]->() RETURN r.relationType AS type, count(*) AS total ORDER BY type"
@@ -608,9 +606,7 @@ def bfs_distances(
         current, depth = queue.popleft()
         if depth >= max_hops:
             continue
-        for path in repository.traverse(
-            current, relation_types, max_hops=1, direction="out"
-        ):
+        for path in repository.traverse(current, relation_types, max_hops=1, direction="out"):
             for node_id in path.node_ids()[1:]:
                 if node_id not in distances:
                     distances[node_id] = depth + 1

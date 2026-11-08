@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from fin_kg.core.errors import NotFoundError
 from fin_kg.core.logging import get_logger
@@ -108,7 +109,7 @@ class JobStore:
             try:
                 result = work(job)
                 self.update(job_id, status="succeeded", result=result)
-            except Exception as exc:  # noqa: BLE001 - the failure is recorded, not raised
+            except Exception as exc:  # the failure is recorded, not raised
                 logger.exception("job %s failed", job_id)
                 self.update(job_id, status="failed", error=str(exc))
 

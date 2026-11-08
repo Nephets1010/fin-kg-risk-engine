@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from fin_kg.core.logging import get_logger
 from fin_kg.observability.metrics import JOB_DURATION, JOB_RUNS
@@ -77,7 +78,7 @@ class Scheduler:
         job.last_run = datetime.now(timezone.utc).isoformat()
         try:
             result = job.handler()
-        except Exception as exc:  # noqa: BLE001 - a failing job must not stop the scheduler
+        except Exception as exc:  # a failing job must not stop the scheduler
             job.last_status = "failed"
             job.run_count += 1
             JOB_RUNS.labels(job_type=job.name, status="failed").inc()
@@ -121,9 +122,7 @@ class Scheduler:
                     jobs = list(self.jobs)
                 for job in jobs:
                     if job.enabled and schedule.every().minute.at(job.cron).should_run:
-                        threading.Thread(
-                            target=self.run_job, args=(job,), daemon=True
-                        ).start()
+                        threading.Thread(target=self.run_job, args=(job,), daemon=True).start()
                 self._stop.wait(30)
             return
         except ImportError:
@@ -167,11 +166,9 @@ def _cron_matches(expression: str, moment: datetime) -> bool:
     fields = expression.split()
     if len(fields) != 5:
         return False
-    minute, hour, day, month, weekday = fields
+    _minute, _hour, _day, _month, _weekday = fields
     values = (moment.minute, moment.hour, moment.day, moment.month, moment.weekday() + 1)
-    return all(
-        _field_matches(spec, value) for spec, value in zip(fields, values)
-    )
+    return all(_field_matches(spec, value) for spec, value in zip(fields, values, strict=False))
 
 
 def _field_matches(spec: str, value: int) -> bool:

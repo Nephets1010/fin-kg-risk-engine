@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from fastapi import APIRouter, HTTPException, Query
 
 from fin_kg.api.deps import Repository
@@ -33,9 +32,7 @@ def graph_stats(repository: Repository) -> GraphStatsResponse:
         for key, value in stats.items()
         if key.startswith("REL:")
     }
-    nodes = {
-        key: int(value) for key, value in stats.items() if not key.startswith("REL:")
-    }
+    nodes = {key: int(value) for key, value in stats.items() if not key.startswith("REL:")}
     nodes.pop("Relationship", None)
     return GraphStatsResponse(
         nodes=nodes,
@@ -141,7 +138,8 @@ def paths_between(
     hops: int = Query(default=4, ge=1, le=8),
 ) -> list[PathResponse]:
     """Return the shortest paths between two entities."""
-    if repository.get_node(source) is None:        raise HTTPException(
+    if repository.get_node(source) is None:
+        raise HTTPException(
             status_code=404,
             detail={"code": "not_found", "message": f"source entity {source} not found"},
         )

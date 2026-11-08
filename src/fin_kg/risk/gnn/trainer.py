@@ -20,9 +20,10 @@ the metric to be trustworthy.
 from __future__ import annotations
 
 import csv
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -63,8 +64,16 @@ def precision_recall_f1(
     true_positive = float(np.sum(predicted & actual))
     false_positive = float(np.sum(predicted & ~actual))
     false_negative = float(np.sum(~predicted & actual))
-    precision = true_positive / (true_positive + false_positive) if (true_positive + false_positive) else 0.0
-    recall = true_positive / (true_positive + false_negative) if (true_positive + false_negative) else 0.0
+    precision = (
+        true_positive / (true_positive + false_positive)
+        if (true_positive + false_positive)
+        else 0.0
+    )
+    recall = (
+        true_positive / (true_positive + false_negative)
+        if (true_positive + false_negative)
+        else 0.0
+    )
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
     return precision, recall, f1
 
@@ -114,7 +123,7 @@ class LabelStore:
         return self.labels.get(entity_id, 0)
 
     @classmethod
-    def from_csv(cls, path: Path) -> "LabelStore":
+    def from_csv(cls, path: Path) -> LabelStore:
         """Load labels from a CSV with ``entity_id,label`` columns."""
         store = cls()
         path = Path(path)
@@ -187,9 +196,7 @@ class GNNTrainer:
             seed_ids or labelled_ids, max_hops=max_hops, max_nodes=max_nodes
         )
         features = normalize_features(subgraph.features)
-        targets = np.array(
-            [labels.get(node_id) for node_id in subgraph.node_ids], dtype=np.float64
-        )
+        targets = np.array([labels.get(node_id) for node_id in subgraph.node_ids], dtype=np.float64)
 
         rng = np.random.default_rng(self.seed)
         indices = rng.permutation(len(subgraph.node_ids))
@@ -223,7 +230,9 @@ class GNNTrainer:
         val_features = features[val_mask]
         val_labels = targets[val_mask]
         if len(val_labels) and (val_labels.sum() > 0) and (val_labels.sum() < len(val_labels)):
-            predictions = self.model.predict_proba(val_features, self._restrict_edges(subgraph.edge_index, val_mask))
+            predictions = self.model.predict_proba(
+                val_features, self._restrict_edges(subgraph.edge_index, val_mask)
+            )
             precision, recall, f1 = precision_recall_f1(predictions, val_labels)
             report.metrics.update(
                 {
@@ -258,7 +267,7 @@ class GNNTrainer:
         probabilities = self.model.predict_proba(features, subgraph.edge_index)
         return {
             node_id: float(probability)
-            for node_id, probability in zip(subgraph.node_ids, probabilities)
+            for node_id, probability in zip(subgraph.node_ids, probabilities, strict=False)
         }
 
 

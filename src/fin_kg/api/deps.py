@@ -68,20 +68,18 @@ def create_repository(settings: Any = None) -> GraphRepository:
         repository.ensure_schema()
         logger.info("graph store: Neo4j at %s", resolved.neo4j.uri)
         return repository
-    except Exception as exc:  # noqa: BLE001 - the API must stay startable in dev
+    except Exception as exc:  # the API must stay startable in dev
         if repository is not None:
             # Release the driver before falling back, otherwise its finaliser
             # complains at interpreter shutdown.
             try:
                 repository.close()
-            except Exception:  # noqa: BLE001 - best effort cleanup
+            except Exception:  # best effort cleanup
                 logger.debug("failed to close the Neo4j driver", exc_info=True)
         if resolved.env == "production":
             logger.error("Neo4j is unavailable in production: %s", exc)
             raise
-        logger.warning(
-            "Neo4j is unavailable (%s); falling back to the local file graph", exc
-        )
+        logger.warning("Neo4j is unavailable (%s); falling back to the local file graph", exc)
         local = FileGraphRepository(
             resolved.resolve_path(Path("data/local-graph.json")), autosave=True
         )
@@ -115,7 +113,7 @@ def get_rules() -> RuleEngine:
     path = settings.resolve_path(settings.risk.rules_path)
     try:
         return RuleEngine.from_yaml(path)
-    except Exception as exc:  # noqa: BLE001 - a broken rule file must not kill the API
+    except Exception as exc:  # a broken rule file must not kill the API
         logger.error("failed to load risk rules from %s: %s", path, exc)
         return RuleEngine(rules=[])
 
@@ -175,9 +173,7 @@ def get_report_generator(
     return _service_for(
         repository,
         "report_generator",
-        lambda: ReportGenerator(
-            repository, similar_cases=SimilarCaseFinder(repository)
-        ),
+        lambda: ReportGenerator(repository, similar_cases=SimilarCaseFinder(repository)),
     )
 
 
@@ -234,8 +230,8 @@ def reset_dependencies() -> None:
 __all__ = [
     "JobStoreDep",
     "KGQADep",
-    "Repository",
     "ReportDep",
+    "Repository",
     "RiskServiceDep",
     "RulesDep",
     "SettingsDep",

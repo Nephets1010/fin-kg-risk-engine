@@ -25,16 +25,16 @@ def health(repository: Repository, settings: SettingsDep) -> HealthResponse:
     try:
         stats = repository.stats()
         dependencies["graph_store"] = "ok"
-        dependencies["nodeCount"] = str(sum(
-            count for key, count in stats.items() if not key.startswith("REL:")
-        ))
-    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        dependencies["nodeCount"] = str(
+            sum(count for key, count in stats.items() if not key.startswith("REL:"))
+        )
+    except Exception as exc:  # reported, not raised
         dependencies["graph_store"] = f"error: {type(exc).__name__}"
 
     try:
         repository.get_node("__healthcheck__")
         dependencies["graph_query"] = "ok"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         dependencies["graph_query"] = f"error: {type(exc).__name__}"
 
     return HealthResponse(

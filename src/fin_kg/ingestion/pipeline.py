@@ -17,10 +17,11 @@ source cursor and the ids already written.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
 from fin_kg.core.errors import IngestionError
 from fin_kg.core.logging import get_logger
@@ -45,15 +46,13 @@ class Checkpoint:
     written_nodes: int = 0
     written_relations: int = 0
     completed: bool = False
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "Checkpoint":
+    def from_dict(cls, payload: dict[str, Any]) -> Checkpoint:
         known = {key: payload[key] for key in cls.__slots__ if key in payload}
         return cls(**known)
 
@@ -82,15 +81,11 @@ def stored_items(existing: dict[str, Any]) -> list[Provenance]:
                     source_type=SourceType(entry.get("sourceType", "unknown")),
                     source_id=str(entry.get("sourceId", "unknown")),
                     record_id=str(entry.get("recordId", "unknown")),
-                    extraction_method=ExtractionMethod(
-                        entry.get("extractionMethod", "api")
-                    ),
+                    extraction_method=ExtractionMethod(entry.get("extractionMethod", "api")),
                     source_url=entry.get("sourceUrl"),
                     confidence=float(entry.get("confidence", 1.0)),
                     extractor_version=entry.get("extractorVersion"),
-                    retrieved_at=datetime.fromisoformat(
-                        entry["retrievedAt"]
-                    )
+                    retrieved_at=datetime.fromisoformat(entry["retrievedAt"])
                     if entry.get("retrievedAt")
                     else utcnow(),
                     content_hash=entry.get("contentHash"),
@@ -206,9 +201,7 @@ class IngestionPipeline:
             report.checkpoints.extend(source_report.checkpoints)
 
         report.cleaning = self.cleaner.stats.as_dict()
-        report.duration_seconds = round(
-            (datetime.now(timezone.utc) - started).total_seconds(), 3
-        )
+        report.duration_seconds = round((datetime.now(timezone.utc) - started).total_seconds(), 3)
         logger.info(
             "ingestion complete fetched=%s nodes=%s relations=%s in %ss",
             report.fetched,
@@ -255,7 +248,7 @@ class IngestionPipeline:
 
             try:
                 node = self.cleaner.clean(record)
-            except Exception:  # noqa: BLE001 - already counted and logged by the cleaner
+            except Exception:  # already counted and logged by the cleaner
                 report.rejected += 1
                 continue
             node = self._align_node(node, record)
@@ -335,6 +328,7 @@ class IngestionPipeline:
             if item.fingerprint() not in known:
                 merged.append(item)
         node.provenance = merged
+
     def _canonical_id(self, source_id: str) -> str:
         """Translate a source-specific id into the canonical graph id."""
         return self._id_map.get(source_id, source_id)
@@ -395,7 +389,7 @@ class IngestionPipeline:
                 properties=properties,
                 provenance=[provenance],
             )
-        except Exception as exc:  # noqa: BLE001 - pydantic validation error
+        except Exception as exc:  # pydantic validation error
             logger.warning("invalid relation record skipped: %s", exc)
             return None
 

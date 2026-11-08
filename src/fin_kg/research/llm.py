@@ -19,9 +19,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from fin_kg.config.settings import LLMSettings
 from fin_kg.core.errors import LLMError
 from fin_kg.core.logging import get_logger, register_secret_filter
-from fin_kg.config.settings import LLMSettings
 
 logger = get_logger(__name__)
 
@@ -71,9 +71,11 @@ class LLMClient:
                 response.raise_for_status()
                 body = response.json()
                 return str(body["choices"][0]["message"]["content"]).strip()
-            except Exception as exc:  # noqa: BLE001 - httpx raises several error types
+            except Exception as exc:  # httpx raises several error types
                 last_error = exc
-                logger.warning("LLM request failed (attempt %s): %s", attempt + 1, type(exc).__name__)
+                logger.warning(
+                    "LLM request failed (attempt %s): %s", attempt + 1, type(exc).__name__
+                )
         raise LLMError("LLM request failed", details={"error": str(last_error)})
 
     def complete_json(self, prompt: str, *, system: str | None = None) -> Any:

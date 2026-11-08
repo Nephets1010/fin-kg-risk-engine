@@ -66,7 +66,7 @@ class RiskLevel(str, Enum):
         return {"low": 0, "medium": 1, "high": 2, "critical": 3}[self.value]
 
     @classmethod
-    def from_score(cls, score: float, *, alert: float = 60.0, critical: float = 85.0) -> "RiskLevel":
+    def from_score(cls, score: float, *, alert: float = 60.0, critical: float = 85.0) -> RiskLevel:
         """Map a 0-100 risk score onto a band."""
         if score >= critical:
             return cls.CRITICAL
@@ -131,12 +131,12 @@ class Company(GraphNode):
 class PersonRole(str, Enum):
     """Role a person holds with respect to a company."""
 
-    LEGAL_REP = "legal_rep"      # 法定代表人
-    DIRECTOR = "director"        # 董事
-    SUPERVISOR = "supervisor"    # 监事
+    LEGAL_REP = "legal_rep"  # 法定代表人
+    DIRECTOR = "director"  # 董事
+    SUPERVISOR = "supervisor"  # 监事
     ACTUAL_CONTROLLER = "actual_controller"  # 实际控制人
     SHAREHOLDER = "shareholder"  # 股东
-    EXECUTIVE = "executive"      # 高管
+    EXECUTIVE = "executive"  # 高管
 
 
 class Person(GraphNode):
@@ -154,16 +154,16 @@ class Person(GraphNode):
 class EventType(str, Enum):
     """Kinds of events recorded on the graph."""
 
-    ENFORCEMENT = "enforcement"        # 被强制执行
-    LITIGATION = "litigation"          # 涉诉
-    PENALTY = "penalty"                # 行政处罚
-    ARREARS = "arrears"                # 欠税/欠款
-    DEFAULT = "default"                # 违约
+    ENFORCEMENT = "enforcement"  # 被强制执行
+    LITIGATION = "litigation"  # 涉诉
+    PENALTY = "penalty"  # 行政处罚
+    ARREARS = "arrears"  # 欠税/欠款
+    DEFAULT = "default"  # 违约
     RATING_DOWNGRADE = "rating_downgrade"  # 评级下调
-    EQUITY_FREEZE = "equity_freeze"    # 股权冻结
-    BUSINESS_CHANGE = "business_change"    # 工商变更
+    EQUITY_FREEZE = "equity_freeze"  # 股权冻结
+    BUSINESS_CHANGE = "business_change"  # 工商变更
     ABNORMAL_OPERATION = "abnormal_operation"  # 经营异常
-    NEGATIVE_NEWS = "negative_news"    # 负面舆情
+    NEGATIVE_NEWS = "negative_news"  # 负面舆情
     OTHER = "other"
 
 
@@ -296,16 +296,16 @@ def _to_camel_case(name: str) -> str:
 
 
 __all__ = [
-    "Company",
-    "CompanyStatus",
     "ENTITY_TYPE_TO_LABEL",
     "ENTITY_TYPE_TO_MODEL",
+    "LABEL_TO_ENTITY_TYPE",
+    "Company",
+    "CompanyStatus",
     "Event",
     "EventType",
     "GraphEntityType",
     "GraphNode",
     "Industry",
-    "LABEL_TO_ENTITY_TYPE",
     "Person",
     "PersonRole",
     "Product",

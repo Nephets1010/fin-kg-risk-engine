@@ -60,11 +60,9 @@ class RiskSettings(BaseSettings):
     rules_path: Path = Path("rules/risk_rules.yaml")
 
     @model_validator(mode="after")
-    def _check_thresholds(self) -> "RiskSettings":
+    def _check_thresholds(self) -> RiskSettings:
         if self.critical_threshold < self.alert_threshold:
-            raise ValueError(
-                "critical_threshold must be greater than or equal to alert_threshold"
-            )
+            raise ValueError("critical_threshold must be greater than or equal to alert_threshold")
         return self
 
 
@@ -130,7 +128,7 @@ class Settings(BaseSettings):
     env: Environment = "development"
     log_level: str = "INFO"
     log_format: LogFormat = "json"
-    api_host: str = "0.0.0.0"  # noqa: S104 - container bind address
+    api_host: str = "0.0.0.0"  # container bind address
     api_port: int = Field(default=8000, ge=1, le=65535)
     workers: int = Field(default=4, ge=1, le=64)
     api_key: SecretStr = SecretStr("")
@@ -160,7 +158,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _enforce_production_secrets(self) -> "Settings":
+    def _enforce_production_secrets(self) -> Settings:
         """Refuse to start production without a real Neo4j credential."""
         if self.env == "production":
             if not self.neo4j.password.get_secret_value():
@@ -169,9 +167,7 @@ class Settings(BaseSettings):
                     "supply it through a secret manager"
                 )
             if self.llm.enabled and not self.llm.api_key.get_secret_value():
-                raise ValueError(
-                    "FIN_KG_LLM_API_KEY must be set when the LLM backend is enabled"
-                )
+                raise ValueError("FIN_KG_LLM_API_KEY must be set when the LLM backend is enabled")
         return self
 
     def resolve_path(self, relative: Path) -> Path:

@@ -104,9 +104,7 @@ def risk_rank(
 ) -> RiskRankResponse:
     """Return the highest-risk entities."""
     scores = service.rank(limit=limit)
-    return RiskRankResponse(
-        items=[_score_response(score) for score in scores], total=len(scores)
-    )
+    return RiskRankResponse(items=[_score_response(score) for score in scores], total=len(scores))
 
 
 @router.get(
@@ -117,9 +115,7 @@ def risk_rank(
 )
 def list_alerts(
     service: RiskServiceDep,
-    min_severity: str = Query(
-        default="info", description="info | warning | major | critical"
-    ),
+    min_severity: str = Query(default="info", description="info | warning | major | critical"),
     limit: int = Query(default=50, ge=1, le=500),
 ) -> AlertListResponse:
     """Evaluate the rules over the graph and return the alerts."""

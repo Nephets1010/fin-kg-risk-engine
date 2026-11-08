@@ -35,14 +35,14 @@ logger = get_logger(__name__)
 class QueryIntent(str, Enum):
     """The supported question types."""
 
-    ENTITY_PROFILE = "entity_profile"        # 公司概况
+    ENTITY_PROFILE = "entity_profile"  # 公司概况
     HOLDING_STRUCTURE = "holding_structure"  # 股权结构
-    GUARANTEE_CHAIN = "guarantee_chain"      # 担保链
-    RISK_ASSESSMENT = "risk_assessment"      # 风险评估
-    EVENT_HISTORY = "event_history"          # 事件历史
-    RELATED_PARTIES = "related_parties"      # 关联企业
-    TOP_RISKED = "top_risked"                # 高风险主体
-    EXPOSURE = "exposure"                    # 风险敞口
+    GUARANTEE_CHAIN = "guarantee_chain"  # 担保链
+    RISK_ASSESSMENT = "risk_assessment"  # 风险评估
+    EVENT_HISTORY = "event_history"  # 事件历史
+    RELATED_PARTIES = "related_parties"  # 关联企业
+    TOP_RISKED = "top_risked"  # 高风险主体
+    EXPOSURE = "exposure"  # 风险敞口
     UNKNOWN = "unknown"
 
 

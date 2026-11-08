@@ -140,7 +140,9 @@ class RiskPropagator:
         """Enumerate bounded paths, keeping only the strongest per endpoint."""
         results: dict[str, TransmissionPath] = {}
 
-        def walk(node_ids: list[str], node_names: list[str], edges: list[dict], seen: set[str]) -> None:
+        def walk(
+            node_ids: list[str], node_names: list[str], edges: list[dict], seen: set[str]
+        ) -> None:
             if len(edges) >= self.max_hops:
                 return
             current = node_ids[-1]
@@ -154,15 +156,15 @@ class RiskPropagator:
                 next_id = path.node_ids()[-1]
                 if next_id in seen:
                     continue
-                new_edges = edges + [relation]
-                new_ids = node_ids + [next_id]
-                new_names = node_names + [
-                    path.nodes[-1].get("name", "") if path.nodes else ""
-                ]
+                new_edges = [*edges, relation]
+                new_ids = [*node_ids, next_id]
+                new_names = [*node_names, path.nodes[-1].get("name", "") if path.nodes else ""]
                 candidate = TransmissionPath(
                     node_ids=new_ids,
                     node_names=new_names,
-                    relation_types=[str(relation.get("relationType", "")) for relation in new_edges],
+                    relation_types=[
+                        str(relation.get("relationType", "")) for relation in new_edges
+                    ],
                     transmissibilities=[
                         float(edge.get("transmissibility") or 0.0) for edge in new_edges
                     ],

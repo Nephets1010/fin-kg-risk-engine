@@ -68,7 +68,7 @@ class WebhookChannel:
             response = httpx.post(self.url, json=payload, timeout=self.timeout)
             response.raise_for_status()
             return True
-        except Exception as exc:  # noqa: BLE001 - a failed delivery must not raise
+        except Exception as exc:  # a failed delivery must not raise
             logger.error("webhook delivery failed for %s: %s", alert.alert_id, exc)
             return False
 
@@ -99,7 +99,7 @@ class AlertDispatcher:
     channels: list[AlertChannel]
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "AlertDispatcher":
+    def from_settings(cls, settings: Any) -> AlertDispatcher:
         """Build the dispatcher from the application settings."""
         channels: list[AlertChannel] = [ConsoleChannel()]
         webhook = settings.observability.alert_webhook_url
@@ -113,7 +113,7 @@ class AlertDispatcher:
         for channel in self.channels:
             try:
                 results[channel.name] = channel.send(alert)
-            except Exception as exc:  # noqa: BLE001 - one bad channel must not block others
+            except Exception as exc:  # one bad channel must not block others
                 logger.error("channel %s raised on %s: %s", channel.name, alert.alert_id, exc)
                 results[channel.name] = False
         return results

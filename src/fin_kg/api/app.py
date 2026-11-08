@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,9 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.api_key.get_secret_value(),
         settings.llm.api_key.get_secret_value(),
     )
-    logger.info(
-        "fin-kg-risk-engine %s starting in %s mode", __version__, settings.env
-    )
+    logger.info("fin-kg-risk-engine %s starting in %s mode", __version__, settings.env)
     yield
     logger.info("fin-kg-risk-engine shutting down")
 
@@ -117,9 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             context_request_id.reset(token)
             duration = time.monotonic() - started
             path = request.url.path
-            HTTP_REQUESTS.labels(
-                method=request.method, path=path, status=str(status_code)
-            ).inc()
+            HTTP_REQUESTS.labels(method=request.method, path=path, status=str(status_code)).inc()
             HTTP_LATENCY.labels(method=request.method, path=path).observe(duration)
 
     @app.exception_handler(FinKgError)

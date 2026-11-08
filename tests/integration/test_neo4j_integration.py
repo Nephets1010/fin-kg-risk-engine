@@ -49,7 +49,7 @@ def neo4j_repository():
     try:
         repository = Neo4jGraphRepository.from_settings(settings)
         repository.ensure_schema()
-    except Exception as exc:  # noqa: BLE001 - skip when the service is absent
+    except Exception as exc:  # skip when the service is absent
         pytest.skip(f"Neo4j is not reachable: {exc}")
 
     repository.execute_read("MATCH (n) DETACH DELETE n")
@@ -61,9 +61,7 @@ def neo4j_repository():
 @pytest.mark.integration
 class TestNeo4jRepository:
     def test_schema_is_applied(self, neo4j_repository: Neo4jGraphRepository) -> None:
-        rows = neo4j_repository.execute_read(
-            "SHOW CONSTRAINTS YIELD name RETURN name"
-        )
+        rows = neo4j_repository.execute_read("SHOW CONSTRAINTS YIELD name RETURN name")
         assert rows
 
     def test_upsert_and_read_back(self, neo4j_repository: Neo4jGraphRepository) -> None:
@@ -81,9 +79,7 @@ class TestNeo4jRepository:
         assert node["name"] == "乙"
 
     def test_relations_round_trip(self, neo4j_repository: Neo4jGraphRepository) -> None:
-        neo4j_repository.upsert_nodes(
-            [Company(id="a", name="A"), Company(id="b", name="B")]
-        )
+        neo4j_repository.upsert_nodes([Company(id="a", name="A"), Company(id="b", name="B")])
         neo4j_repository.upsert_relations(
             [
                 Relation(
@@ -94,9 +90,7 @@ class TestNeo4jRepository:
                 )
             ]
         )
-        paths = neo4j_repository.traverse(
-            "a", [RelationType.HOLD], max_hops=1, direction="out"
-        )
+        paths = neo4j_repository.traverse("a", [RelationType.HOLD], max_hops=1, direction="out")
         assert len(paths) == 1
         assert paths[0].node_ids() == ["a", "b"]
 

@@ -27,20 +27,20 @@ from fin_kg.domain.provenance import Provenance, utcnow
 class RelationType(str, Enum):
     """Typed edge kinds in the graph."""
 
-    HOLD = "HOLD"                      # 持股
-    LEGAL_REP = "LEGAL_REP"            # 法定代表人
-    GUARANTEE = "GUARANTEE"            # 担保
-    RELATED = "RELATED"                # 关联
-    INVOLVED_IN = "INVOLVED_IN"        # 涉诉
-    ISSUE = "ISSUE"                    # 发行
-    DIRECTOR_OF = "DIRECTOR_OF"        # 任职董事
+    HOLD = "HOLD"  # 持股
+    LEGAL_REP = "LEGAL_REP"  # 法定代表人
+    GUARANTEE = "GUARANTEE"  # 担保
+    RELATED = "RELATED"  # 关联
+    INVOLVED_IN = "INVOLVED_IN"  # 涉诉
+    ISSUE = "ISSUE"  # 发行
+    DIRECTOR_OF = "DIRECTOR_OF"  # 任职董事
     SHAREHOLDER_OF = "SHAREHOLDER_OF"  # 股东
-    CONTROLS = "CONTROLS"              # 控制
-    EMPLOYEE_OF = "EMPLOYEE_OF"        # 高管任职
-    SUPPLIER_OF = "SUPPLIER_OF"        # 供应商
-    CUSTOMER_OF = "CUSTOMER_OF"        # 客户
-    INVESTS_IN = "INVESTS_IN"          # 投资
-    MERGER_OF = "MERGER_OF"            # 合并
+    CONTROLS = "CONTROLS"  # 控制
+    EMPLOYEE_OF = "EMPLOYEE_OF"  # 高管任职
+    SUPPLIER_OF = "SUPPLIER_OF"  # 供应商
+    CUSTOMER_OF = "CUSTOMER_OF"  # 客户
+    INVESTS_IN = "INVESTS_IN"  # 投资
+    MERGER_OF = "MERGER_OF"  # 合并
     COUNTERPARTY_OF = "COUNTERPARTY_OF"  # 交易对手
     INVOLVED_IN_PRODUCT = "INVOLVED_IN_PRODUCT"  # 涉事产品
 
@@ -202,7 +202,7 @@ class Relation(BaseModel):
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())
 
     @model_validator(mode="after")
-    def _validate_required_properties(self) -> "Relation":
+    def _validate_required_properties(self) -> Relation:
         schema = RELATION_SCHEMA[self.relation_type]
         missing = schema["required"] - set(self.properties)
         if missing:

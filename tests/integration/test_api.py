@@ -18,8 +18,6 @@ from fin_kg.ingestion.sources import SyntheticSourceAdapter
 @pytest.fixture
 def seeded_client(app_with_repository: TestClient) -> TestClient:
     """A client whose graph already holds the synthetic dataset."""
-    from fin_kg.ingestion.pipeline import IngestionPipeline
-    from fin_kg.ingestion.sources import SyntheticSourceAdapter
 
     repository = app_with_repository.repository  # type: ignore[attr-defined]
     IngestionPipeline(repository).run(
@@ -113,9 +111,7 @@ class TestRiskEndpoints:
         assert "severities" in payload
 
     def test_alerts_reject_an_invalid_severity(self, seeded_client: TestClient) -> None:
-        response = seeded_client.get(
-            "/api/v1/risk/alerts", params={"min_severity": "nonsense"}
-        )
+        response = seeded_client.get("/api/v1/risk/alerts", params={"min_severity": "nonsense"})
         assert response.status_code == 422
 
     def test_entity_exposure(self, seeded_client: TestClient) -> None:
@@ -163,9 +159,7 @@ class TestJobEndpoints:
         assert payload["jobType"] == "ingest"
 
     def test_job_status_is_pollable(self, client: TestClient) -> None:
-        job_id = client.post("/api/v1/jobs/ingest", json={"source": "synthetic"}).json()[
-            "jobId"
-        ]
+        job_id = client.post("/api/v1/jobs/ingest", json={"source": "synthetic"}).json()["jobId"]
         response = client.get(f"/api/v1/jobs/{job_id}")
         assert response.status_code == 200
         assert response.json()["jobId"] == job_id

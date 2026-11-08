@@ -29,13 +29,9 @@ class TestInMemoryRepository:
         assert repository.stats()["Entity"] == 1
 
     def test_credit_code_conflict_is_rejected(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id="c1", name="甲", credit_code="91110000MA01ABCDEF")]
-        )
+        repository.upsert_nodes([Company(id="c1", name="甲", credit_code="91110000MA01ABCDEF")])
         with pytest.raises(GraphStoreError):
-            repository.upsert_nodes(
-                [Company(id="c2", name="乙", credit_code="91110000MA01ABCDEF")]
-            )
+            repository.upsert_nodes([Company(id="c2", name="乙", credit_code="91110000MA01ABCDEF")])
 
     def test_relation_to_unknown_node_is_rejected(self, repository) -> None:
         repository.upsert_nodes([Company(id="c1", name="甲")])
@@ -52,9 +48,7 @@ class TestInMemoryRepository:
             )
 
     def test_traverse_follows_the_direction(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id="a", name="A"), Company(id="b", name="B")]
-        )
+        repository.upsert_nodes([Company(id="a", name="A"), Company(id="b", name="B")])
         repository.upsert_relations(
             [
                 Relation(
@@ -65,22 +59,14 @@ class TestInMemoryRepository:
                 )
             ]
         )
-        outgoing = repository.traverse(
-            "a", [RelationType.HOLD], max_hops=1, direction="out"
-        )
-        incoming = repository.traverse(
-            "b", [RelationType.HOLD], max_hops=1, direction="in"
-        )
+        outgoing = repository.traverse("a", [RelationType.HOLD], max_hops=1, direction="out")
+        incoming = repository.traverse("b", [RelationType.HOLD], max_hops=1, direction="in")
         assert len(outgoing) == 1
         assert len(incoming) == 1
-        assert repository.traverse(
-            "b", [RelationType.HOLD], max_hops=1, direction="out"
-        ) == []
+        assert repository.traverse("b", [RelationType.HOLD], max_hops=1, direction="out") == []
 
     def test_traverse_respects_max_hops(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id=f"c{i}", name=f"C{i}") for i in range(4)]
-        )
+        repository.upsert_nodes([Company(id=f"c{i}", name=f"C{i}") for i in range(4)])
         repository.upsert_relations(
             [
                 Relation(
@@ -103,32 +89,24 @@ class TestInMemoryRepository:
                 ),
             ]
         )
-        paths = repository.traverse(
-            "c0", [RelationType.GUARANTEE], max_hops=2, direction="out"
-        )
+        paths = repository.traverse("c0", [RelationType.GUARANTEE], max_hops=2, direction="out")
         assert max(path.length for path in paths) == 2
 
     def test_find_nodes_filters_by_label(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id="c1", name="甲"), Person(id="p1", name="张三")]
-        )
+        repository.upsert_nodes([Company(id="c1", name="甲"), Person(id="p1", name="张三")])
         assert len(repository.find_nodes("Company")) == 1
         assert len(repository.find_nodes("Person")) == 1
         assert len(repository.find_nodes("Event")) == 0
 
     def test_stats_counts_labels(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id="c1", name="甲"), Event(id="e1", name="事件")]
-        )
+        repository.upsert_nodes([Company(id="c1", name="甲"), Event(id="e1", name="事件")])
         stats = repository.stats()
         assert stats["Company"] == 1
         assert stats["Event"] == 1
         assert stats["Relationship"] == 0
 
     def test_bfs_distances(self, repository) -> None:
-        repository.upsert_nodes(
-            [Company(id=f"c{i}", name=f"C{i}") for i in range(3)]
-        )
+        repository.upsert_nodes([Company(id=f"c{i}", name=f"C{i}") for i in range(3)])
         repository.upsert_relations(
             [
                 Relation(
@@ -145,9 +123,7 @@ class TestInMemoryRepository:
                 ),
             ]
         )
-        distances = bfs_distances(
-            repository, "c0", [RelationType.GUARANTEE], max_hops=3
-        )
+        distances = bfs_distances(repository, "c0", [RelationType.GUARANTEE], max_hops=3)
         assert distances["c1"] == 1
         assert distances["c2"] == 2
 
@@ -162,7 +138,7 @@ class TestWhitelists:
         assert "GUARANTEE" in ALLOWED_RELATION_TYPES
 
     def test_whitelist_matches_the_domain(self) -> None:
-        assert ALLOWED_RELATION_TYPES == {relation.value for relation in RelationType}
+        assert {relation.value for relation in RelationType} == ALLOWED_RELATION_TYPES
 
 
 class TestSchema:

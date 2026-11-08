@@ -165,9 +165,7 @@ class FeatureExtractor:
                 features[index_of[node_id]] = 0.0
 
         edge_index = (
-            np.array(edges, dtype=np.int64).T
-            if edges
-            else np.zeros((2, 0), dtype=np.int64)
+            np.array(edges, dtype=np.int64).T if edges else np.zeros((2, 0), dtype=np.int64)
         )
         edge_weight = np.array(weights, dtype=np.float32)
 

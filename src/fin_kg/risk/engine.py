@@ -37,9 +37,10 @@ that stops at the first match would hide the full picture from an analyst.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
@@ -95,14 +96,18 @@ class Clause:
             reading = _find_reading(score.readings, self.indicator_id or "")
             if reading is None or reading.measurement is None:
                 return False
-            return _compare(reading.measurement, self.operator or "gte", self.value, self.value_high)
+            return _compare(
+                reading.measurement, self.operator or "gte", self.value, self.value_high
+            )
         if self.kind == "path":
             matching = [
                 path
                 for path in paths
                 if path.hops >= self.min_hops
-                and (not self.relation_types
-                     or all(relation in self.relation_types for relation in path.relation_types))
+                and (
+                    not self.relation_types
+                    or all(relation in self.relation_types for relation in path.relation_types)
+                )
             ]
             return len(matching) >= self.min_paths
         raise RuleEvaluationError(f"unknown clause kind: {self.kind}")
@@ -207,12 +212,10 @@ class RuleEngine:
     rules: list[Rule] = field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, path: Path) -> "RuleEngine":
+    def from_yaml(cls, path: Path) -> RuleEngine:
         """Load rules from a YAML file."""
         if not Path(path).exists():
-            raise ValidationError(
-                "risk rule file not found", details={"path": str(path)}
-            )
+            raise ValidationError("risk rule file not found", details={"path": str(path)})
         try:
             payload = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         except yaml.YAMLError as exc:
@@ -222,7 +225,7 @@ class RuleEngine:
         return cls.from_payload(payload)
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "RuleEngine":
+    def from_payload(cls, payload: dict[str, Any]) -> RuleEngine:
         """Build an engine from an already-parsed rule document."""
         if not isinstance(payload, dict):
             raise ValidationError("rule document must be a mapping")
@@ -379,7 +382,7 @@ class RuleEngine:
             }
             for path in path_list
             for node_id, node_name, hops in zip(
-                path.node_ids[1:], path.node_names[1:], range(1, len(path.node_ids))
+                path.node_ids[1:], path.node_names[1:], range(1, len(path.node_ids)), strict=False
             )
         ]
         return RiskAssessment(
@@ -394,7 +397,7 @@ def alert_fingerprint(alert: RiskAlert) -> str:
     """A stable identity for an alert, used for deduplication across runs."""
     import hashlib
 
-    material = f"{alert.rule_id}|{alert.entity_id}|{alert.message}".encode("utf-8")
+    material = f"{alert.rule_id}|{alert.entity_id}|{alert.message}".encode()
     return hashlib.sha256(material).hexdigest()[:24]
 
 

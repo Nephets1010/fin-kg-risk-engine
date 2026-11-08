@@ -15,9 +15,10 @@ testable.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Iterable
+from typing import Any
 
 from fin_kg.core.errors import NotFoundError
 from fin_kg.core.logging import get_logger
@@ -120,18 +121,12 @@ class RiskService:
         assert self._propagator is not None
         return self._propagator.propagate(score, today=today).affected
 
-    def exposure_circle(
-        self, entity_id: str, *, max_hops: int = 2
-    ) -> list[dict[str, Any]]:
+    def exposure_circle(self, entity_id: str, *, max_hops: int = 2) -> list[dict[str, Any]]:
         """The entities directly and indirectly exposed to ``entity_id``."""
         assert self._propagator is not None
         score = self.score(entity_id)
         result = self._propagator.propagate(score)
-        return [
-            item
-            for item in result.affected
-            if int(item.get("hops", 0)) <= max_hops
-        ]
+        return [item for item in result.affected if int(item.get("hops", 0)) <= max_hops]
 
     # -- assessment ---------------------------------------------------------
 
@@ -176,7 +171,9 @@ class RiskService:
         for score in self.rank(limit=limit * 3, today=today):
             assert self._propagator is not None
             propagation = self._propagator.propagate(score, today=today)
-            for alert in self.rules.evaluate(score, propagation.paths, fingerprint_of=alert_fingerprint):
+            for alert in self.rules.evaluate(
+                score, propagation.paths, fingerprint_of=alert_fingerprint
+            ):
                 if order.get(alert.severity.value, 0) >= threshold:
                     collected.append(alert)
         collected.sort(key=lambda alert: (alert.severity.rank, alert.score), reverse=True)
@@ -194,7 +191,7 @@ class RiskService:
         }
         try:
             self.repository.update_properties(score.entity_id, properties)
-        except Exception as exc:  # noqa: BLE001 - persistence must not break the assessment
+        except Exception as exc:  # persistence must not break the assessment
             logger.warning("failed to persist score for %s: %s", score.entity_id, exc)
 
 
