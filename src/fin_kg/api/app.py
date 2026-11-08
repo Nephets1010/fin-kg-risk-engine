@@ -23,8 +23,10 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from fin_kg import __version__
 from fin_kg.api.routers import graph, health, jobs, research, risk
@@ -124,6 +126,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Map every deliberate platform error onto the error envelope."""
         log_exception(logger, "request failed", exc)
         return JSONResponse(status_code=exc.http_status, content=exc.to_dict())
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        """Normalise the HTTP errors raised inside the routers.
+
+        A router that raises ``HTTPException(detail={"code": ..., ...})``
+        would otherwise be serialised by FastAPI as ``{"detail": {...}}``,
+        while the platform's own errors use the flat envelope declared in
+        ``docs/api.md``. Two shapes for one error taxonomy means a client
+        needs two parsers, so the flat envelope wins everywhere.
+        """
+        detail = exc.detail
+        if isinstance(detail, dict) and "code" in detail:
+            content = {
+                "code": str(detail.get("code", "http_error")),
+                "message": str(detail.get("message", "")),
+            }
+            if detail.get("details"):
+                content["details"] = detail["details"]
+            return JSONResponse(status_code=exc.status_code, content=content)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"code": "http_error", "message": str(detail)},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Normalise FastAPI's own request validation errors.
+
+        FastAPI reports a malformed body or query parameter as
+        ``{"detail": [...]}`` — a third shape, on the most common error path
+        of all. The platform's envelope is flat, so the validation errors are
+        flattened onto it too. The raw error list is preserved under
+        ``details`` so that nothing is lost.
+        """
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        location = ".".join(str(part) for part in first.get("loc", []) if part != "body")
+        message = first.get("msg", "request validation failed")
+        if location:
+            message = f"{location}: {message}"
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "validation_error",
+                "message": message,
+                "details": {"errors": errors},
+            },
+        )
 
     @app.exception_handler(ValueError)
     async def handle_value_error(request: Request, exc: ValueError) -> JSONResponse:

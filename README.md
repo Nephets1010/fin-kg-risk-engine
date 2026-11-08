@@ -266,6 +266,43 @@ GraphSAGE 节点分类，**NumPy 完整实现**（前向 + 反向 + 类别加权
 
 标签来源支持三种：弱监督（从规则引擎反推）、公开数据集、人工 CSV。
 
+```bash
+# 训练（默认用规则引擎做弱监督生成标签）
+fin-kg gnn train --model-path data/models/graphsage.json
+
+# 用 CSV 标签训练
+fin-kg gnn train --labels data/labels.csv --model-path data/models/graphsage.json
+
+# 加载模型并查看模型分
+fin-kg gnn load --model-path data/models/graphsage.json
+
+# 查看模型状态
+fin-kg gnn status
+```
+
+训练完成后，风险分响应会**同时给出两个分数**（见 [ADR-0004](docs/adr/ADR-0004-risk-scoring-model.md)）：
+
+```json
+{
+  "score": 37.25,        // 基准分：加权指标综合，风控规则以此为准
+  "modelScore": 37.67,   // 模型分：图结构信号；未训练模型时为 null（不是 0）
+  "scoreGap": 0.42       // 两者之差；差值大意味着图结构说了指标之外的事
+}
+```
+
+模型分**不参与**规则阈值判定——融合后的数字不可解释，风控团队会拒绝使用。两个分数并列输出，让模型作为独立信号供人工复核。
+
+### 性能
+
+评分路径的复杂度是 O(企业数)。在 5000 家企业上全量评分约 340ms，10 万家外推约 7 秒。两个手段把它压下来：
+
+- **`?candidates=N`** —— 只对存储风险分最高的 N 个候选重新评分。实测**加速 14 倍，top-5 结果完全一致**（存储分本身就是上一次同样计算写回的）。不传该参数则保持全量评分，排名最准。
+- **批量回写** —— 风险分一次性写回图谱，而不是每个主体一次查询。
+
+```bash
+curl "http://localhost:8000/api/v1/risk/rank?limit=20&candidates=500"
+```
+
 ---
 
 ## 5 分钟快速开始
@@ -521,3 +558,4 @@ cp .env.example .env
 - [API 文档](docs/api.md) —— 全部接口与示例
 - [部署与运维](docs/deployment.md) —— Compose / 生产部署 / 监控告警
 - [知识图谱数据模型](docs/data-model.md) —— 节点、关系、指标、溯源的完整定义
+- [技术债台账](docs/technical-debt.md) —— 已知问题、处置记录与待确认项

@@ -183,14 +183,24 @@ class FeatureExtractor:
         )
 
     def _collect(self, seed_ids: list[str], *, max_hops: int, max_nodes: int) -> list[str]:
-        """Breadth-first collection of the neighbourhood node ids."""
+        """Breadth-first collection of the neighbourhood node ids.
+
+        The node budget is enforced on the seeds as well as on the
+        expansion. Enforcing it only during the expansion would let a large
+        seed list overrun the budget, which in turn produced an edge index
+        pointing past the end of the feature matrix.
+        """
         collected: list[str] = []
         seen: set[str] = set()
-        frontier = [node_id for node_id in seed_ids if node_id]
-        for node_id in frontier:
-            if node_id not in seen:
-                seen.add(node_id)
-                collected.append(node_id)
+        frontier: list[str] = []
+        for node_id in seed_ids:
+            if not node_id or node_id in seen:
+                continue
+            seen.add(node_id)
+            collected.append(node_id)
+            frontier.append(node_id)
+            if len(collected) >= max_nodes:
+                return collected
 
         for _ in range(max_hops):
             next_frontier: list[str] = []
@@ -199,12 +209,13 @@ class FeatureExtractor:
                     node_id, self.edge_relations, max_hops=1, direction="both"
                 ):
                     for candidate in path.node_ids()[1:]:
-                        if candidate not in seen:
-                            seen.add(candidate)
-                            collected.append(candidate)
-                            next_frontier.append(candidate)
-                            if len(collected) >= max_nodes:
-                                return collected
+                        if candidate in seen:
+                            continue
+                        seen.add(candidate)
+                        collected.append(candidate)
+                        next_frontier.append(candidate)
+                        if len(collected) >= max_nodes:
+                            return collected
             if not next_frontier:
                 break
             frontier = next_frontier

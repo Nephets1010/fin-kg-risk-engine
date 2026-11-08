@@ -99,6 +99,12 @@ class RiskScoreResponse(BaseModel):
     computedAt: datetime
     readings: list[IndicatorReadingResponse] = Field(default_factory=list)
     explanation: str = ""
+    #: The GraphSAGE score, present only when a model has been trained.
+    #: ``null`` means "no model available", not "the model says zero".
+    modelScore: float | None = None
+    #: The distance between the two scores — a large gap marks the entities
+    #: where the graph structure says something the indicators do not.
+    scoreGap: float | None = None
 
 
 class RiskRankResponse(BaseModel):
@@ -143,12 +149,17 @@ class ExposureResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    """A natural-language question."""
+    """A natural-language question.
+
+    ``topK`` caps how many results the answer returns. It is an upper bound:
+    when the question itself names a count ("前 10 家公司"), the smaller of
+    the two wins. Leaving it unset keeps the planner's own default.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=2, max_length=500)
-    topK: int = Field(default=5, ge=1, le=50)
+    topK: int | None = Field(default=None, ge=1, le=50)
 
 
 class EvidenceResponse(BaseModel):

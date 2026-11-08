@@ -96,7 +96,7 @@ class KGQA:
         plan = self.planner.plan(question)
         handler = self._handler(plan.intent)
         facts, evidence = handler(plan)
-        answer_text = self._render(plan, facts, evidence)
+        answer_text = self._render(plan, facts, evidence, question=question)
         return Answer(
             question=question,
             answer=answer_text,
@@ -434,11 +434,23 @@ class KGQA:
 
     # -- rendering ----------------------------------------------------------
 
-    def _render(self, plan: QueryPlan, facts: dict[str, Any], evidence: list[Evidence]) -> str:
-        """Compose the Chinese answer text."""
+    def _render(
+        self,
+        plan: QueryPlan,
+        facts: dict[str, Any],
+        evidence: list[Evidence],
+        *,
+        question: str = "",
+    ) -> str:
+        """Compose the Chinese answer text.
+
+        The original question is passed in rather than recovered from the
+        plan: the plan holds the *interpretation*, not the wording, and the
+        LLM needs the wording to phrase a reply to.
+        """
         if self.llm is not None:
             try:
-                return self._render_with_llm(plan, facts, evidence)
+                return self._render_with_llm(plan, facts, evidence, question=question)
             except Exception as exc:  # never fail because of the LLM
                 logger.warning("LLM rendering failed, falling back to template: %s", exc)
         return self._render_with_template(plan, facts, evidence)
@@ -518,7 +530,12 @@ class KGQA:
         )
 
     def _render_with_llm(
-        self, plan: QueryPlan, facts: dict[str, Any], evidence: list[Evidence]
+        self,
+        plan: QueryPlan,
+        facts: dict[str, Any],
+        evidence: list[Evidence],
+        *,
+        question: str = "",
     ) -> str:
         """Ask the LLM to phrase the answer from the facts.
 
@@ -532,7 +549,7 @@ class KGQA:
         prompt = (
             "你是金融风控分析师助手。请仅依据下面的图谱事实，用简体中文回答问题。"
             "不要编造事实，不要给出图谱中没有的数字。\n\n"
-            f"问题：{plan.question}\n"
+            f"问题：{question}\n"
             f"事实：\n{evidence_text}\n\n"
             f"结构化数据：{facts}\n"
         )

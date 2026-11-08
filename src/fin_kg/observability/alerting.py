@@ -34,6 +34,46 @@ class AlertChannel(Protocol):
         """Deliver one alert. Returns ``True`` on success."""
 
 
+def alert_payload(alert: RiskAlert) -> dict[str, Any]:
+    """Serialise an alert for an outbound channel.
+
+    The keys are camelCase, matching the API contract in
+    ``fin_kg.api.schemas.AlertResponse``. Without this, the same alert would
+    have three different shapes depending on where it went: camelCase over
+    HTTP, snake_case in the audit file, and snake_case in the webhook body.
+    A consumer would need three parsers for one alert.
+    """
+    payload: dict[str, Any] = {
+        "alertId": alert.alert_id,
+        "ruleId": alert.rule_id,
+        "ruleName": alert.rule_name,
+        "severity": alert.severity.value,
+        "status": alert.status.value,
+        "entityId": alert.entity_id,
+        "entityName": alert.entity_name,
+        "entityType": alert.entity_type,
+        "score": alert.score,
+        "message": alert.message,
+        "evidence": alert.evidence,
+        "transmissionPaths": [
+            {
+                "nodeIds": list(path.node_ids),
+                "nodeNames": list(path.node_names),
+                "relationTypes": list(path.relation_types),
+                "hops": path.hops,
+                "propagatedScore": path.propagated_score,
+                "text": path.to_text(),
+            }
+            for path in alert.transmission_paths
+        ],
+        "affectedEntityIds": list(alert.affected_entity_ids),
+        "triggeredAt": alert.triggered_at.isoformat(),
+        "modelVersion": alert.model_version,
+        "fingerprint": alert.fingerprint,
+    }
+    return payload
+
+
 @dataclass(slots=True)
 class ConsoleChannel:
     """Logs the alert. Always available."""
@@ -63,7 +103,7 @@ class WebhookChannel:
     def send(self, alert: RiskAlert) -> bool:
         import httpx
 
-        payload = alert.model_dump(mode="json")
+        payload = alert_payload(alert)
         try:
             response = httpx.post(self.url, json=payload, timeout=self.timeout)
             response.raise_for_status()
@@ -84,7 +124,7 @@ class FileChannel:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(alert.model_dump(mode="json"), ensure_ascii=False))
+                handle.write(json.dumps(alert_payload(alert), ensure_ascii=False))
                 handle.write("\n")
             return True
         except OSError as exc:
@@ -136,4 +176,5 @@ __all__ = [
     "ConsoleChannel",
     "FileChannel",
     "WebhookChannel",
+    "alert_payload",
 ]

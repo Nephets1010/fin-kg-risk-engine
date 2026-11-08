@@ -74,6 +74,9 @@ class IngestionSettings(BaseSettings):
     batch_size: int = Field(default=2_000, ge=1, le=100_000)
     data_dir: Path = Path("data/samples")
     checkpoint_dir: Path = Path("data/checkpoints")
+    #: The operator-maintained alias table — the third level of the entity
+    #: alignment cascade. A missing file means "no aliases".
+    alias_file: Path = Path("data/aliases.yaml")
 
 
 class LLMSettings(BaseSettings):
