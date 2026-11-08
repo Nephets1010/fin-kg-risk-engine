@@ -408,23 +408,17 @@ class KGQA:
 
     def _incoming_edges(self, node_id: str, relation: RelationType) -> list[dict[str, Any]]:
         """Edges of the given type pointing at ``node_id``."""
-        snapshot = getattr(self.repository, "snapshot", None)
-        if snapshot is None:
-            return []
         return [
             edge
-            for edge in snapshot.adjacency.get(node_id, [])
+            for edge in self.repository.neighbours(node_id)
             if edge.get("relationType") == relation.value and edge.get("target") == node_id
         ]
 
     def _outgoing_edges(self, node_id: str, relation: RelationType) -> list[dict[str, Any]]:
         """Edges of the given type leaving ``node_id``."""
-        snapshot = getattr(self.repository, "snapshot", None)
-        if snapshot is None:
-            return []
         return [
             edge
-            for edge in snapshot.adjacency.get(node_id, [])
+            for edge in self.repository.neighbours(node_id)
             if edge.get("relationType") == relation.value and edge.get("source") == node_id
         ]
 

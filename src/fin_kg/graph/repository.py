@@ -151,6 +151,21 @@ class GraphRepository(abc.ABC):
         """
 
     @abc.abstractmethod
+    def neighbours(self, entity_id: str) -> list[dict[str, Any]]:
+        """Return every edge incident to ``entity_id``.
+
+        Each edge carries ``source``, ``target``, ``relationType`` and the
+        relation's own properties. This is the storage-agnostic way to read
+        a node's neighbourhood: the in-memory store answers from its
+        adjacency map, the Neo4j store answers with a Cypher query.
+
+        Consumers must use this instead of reaching into an implementation
+        detail such as the in-memory snapshot — a snapshot is not part of
+        the interface, and code that assumes its presence silently returns
+        nothing on the production store.
+        """
+
+    @abc.abstractmethod
     def stats(self) -> dict[str, int]:
         """Return node/relationship counts grouped by label and type."""
 
@@ -331,6 +346,10 @@ class InMemoryGraphRepository(GraphRepository):
             if self.update_properties(node_id, properties):
                 updated += 1
         return updated
+
+    def neighbours(self, entity_id: str) -> list[dict[str, Any]]:
+        """Every edge incident to ``entity_id``."""
+        return list(self.snapshot.adjacency.get(entity_id, []))
 
     def stats(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -658,6 +677,34 @@ class Neo4jGraphRepository(GraphRepository):
             },
         )
         return int(rows[0]["updated"]) if rows else 0
+
+    def neighbours(self, entity_id: str) -> list[dict[str, Any]]:
+        """Every edge incident to ``entity_id``.
+
+        The relationship type is projected as ``relationType`` so that the
+        shape matches the in-memory store, where the type lives in a
+        property. Consumers therefore need no store-specific branching.
+        """
+        rows = self._run(
+            "MATCH (n:Entity {id: $id})-[r]-() "
+            "RETURN startNode(r).id AS source, endNode(r).id AS target, "
+            "type(r) AS relationType, properties(r) AS props",
+            {"id": entity_id},
+        )
+        edges: list[dict[str, Any]] = []
+        for row in rows:
+            properties = dict(row.get("props") or {})
+            properties.pop("source", None)
+            properties.pop("target", None)
+            edges.append(
+                {
+                    "source": row["source"],
+                    "target": row["target"],
+                    "relationType": row["relationType"],
+                    **properties,
+                }
+            )
+        return edges
 
     def stats(self) -> dict[str, int]:
         node_rows = self._run(

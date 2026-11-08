@@ -175,7 +175,7 @@ def entity_exposure(
 ) -> ExposureResponse:
     """Return the entities exposed to one entity's risk."""
     score = service.score(entity_id)
-    affected = service.propagate(score)
+    affected = service.propagate(score, max_hops=hops)
     return ExposureResponse(
         entityId=score.entity_id,
         entityName=score.entity_name,

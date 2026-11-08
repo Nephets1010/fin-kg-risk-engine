@@ -532,3 +532,106 @@ Settings(env='production', neo4j={'password': 'fin-kg-dev-password'})  ->  接�
 | **未改动** | 风险评分模型与全部指标定义、规则文件、实体 ID 生成规则、图谱 schema、CLI 命令、Neo4j 写入路径、API 响应模型 |
 | **配置** | 无新增配置项。`JobStore` 的两个界限是构造参数，默认值即可用 |
 | **测试** | 347 → 377（新增 `tests/unit/test_audit_round3.py` 22 项 + `test_core.py` 6 项） |
+
+---
+
+# 第四轮补充（架构师独立审计 + 主 Agent 复核）
+
+在第三轮之后，架构师以独立视角复查了架构、性能与可维护性维度，共报 19 条确认发现 + 6 条疑似。主 Agent 对每条做了实码复核，**其中三条经复核与原报有出入**，已在下文标注。本轮新修复 3 项。
+
+## 十五、第四轮修复
+
+### S-08 生产图存储上 KGQA / 相似案例 / GNN 全部静默空转
+
+| 项 | 内容 |
+|---|---|
+| **文件** | `src/fin_kg/graph/repository.py`（新增 `neighbours()` 抽象方法）；`src/fin_kg/research/{kgqa,report,similarity}.py`；`src/fin_kg/risk/gnn/features.py`；`src/fin_kg/risk/indicators_engine.py` |
+| **等级** | 严重 |
+| **影响** | 生产（Neo4j）部署下，自然语言问答恒返回空、可比案例恒为空、图神经网络特征矩阵全零 |
+| **优先级** | P0 |
+
+**问题**：五处消费方直接读取 `getattr(repository, "snapshot", None)`。`GraphSnapshot` 是**内存实现的内部结构**，不是 `GraphRepository` 接口的一部分——`Neo4jGraphRepository` 根本没有这个属性。
+
+代码用 `if snapshot is not None:` 做了保护，于是**不报错、不告警，只是返回空**。生产部署切到 Neo4j 后，三个核心功能静默失效。
+
+**证伪**（用「实现了接口但没有 snapshot」的仓储替身实测）：
+
+```
+FakeNeo4j 有 snapshot: False
+KGQA 答案: 风险分排名：1. 合成0号金融有限公司（0.0）；2. ...（全为 0.0）
+GNN 特征矩阵形状: (10, 9) | 全零: True
+相似案例数: 0
+```
+
+**修复**：在 `GraphRepository` 上新增 `neighbours(entity_id)` 抽象方法——内存实现从邻接表读，Neo4j 实现用 Cypher 查（`MATCH (n:Entity {id:$id})-[r]-() RETURN startNode(r).id, endNode(r).id, type(r), properties(r)`），并把 `type(r)` 投影为 `relationType`，使两套实现返回同构数据。五处消费方改为调用该接口，不再触碰实现细节。
+
+**连带修复**：`LocalIndicatorEngine` 原先也依赖 snapshot，改为同样走接口——这样即便它被误用于 Neo4j 也不会静默返回 `None`。
+
+**兼容性**：接口新增了一个抽象方法，三套仓储实现同步补齐。内存路径的返回结果与修复前逐字段一致（已用等价性测试固化）。
+
+**验证**：`TestStoreAgnosticAccess`（5 项）——用一个「无 snapshot 属性」的仓储替身作为契约守卫，断言特征矩阵非全零、特征向量与内存实现逐位相等、相似案例列表相同、问答带证据。
+
+---
+
+### B-06 `/exposure` 的 `hops` 参数是死参数
+
+| 项 | 内容 |
+|---|---|
+| **文件** | `src/fin_kg/api/routers/risk.py` `entity_exposure()`；`src/fin_kg/risk/service.py` `propagate()` |
+| **等级** | 中 |
+| **影响** | 调用方传 `hops=1` 与不传得到相同结果，参数形同虚设 |
+
+**问题**：路由接收 `hops: int = Query(default=3, ge=1, le=6)`，但从未传给 `service.propagate(score)`——后者也没有这个参数。
+
+**修复**：`RiskService.propagate` 增加 `max_hops` 参数，按 `hops` 字段过滤受影响实体。传播本身仍用配置的深度执行，因此窄查询不会得到不同的路径集，只是报告得更少。
+
+**兼容性**：默认 `max_hops=None` 时行为与修复前完全一致。
+
+---
+
+### B-07 `alerts` 的文档与实际求值范围不符
+
+| 项 | 内容 |
+|---|---|
+| **文件** | `docs/api.md` `GET /api/v1/risk/alerts` |
+| **等级** | 低（文档债） |
+| **影响** | 运维人员可能误以为告警覆盖全图 |
+
+**问题**：文档写「全图规则预警」，但实现自上一轮性能优化起就只在**候选池**（按存储风险分排序后的前 `limit × 3`）上求值。代码行为是有意的性能取舍，错的是文档。
+
+**修复**：改文档而非改代码——说明候选池机制、明确「排在候选池之外的主体不会产生告警」，并指向 CLI 批处理做全图穷举。
+
+---
+
+## 十六、架构师发现中经复核需要修正的三条
+
+审计结论必须复核才能采信。以下三条**经主 Agent 实码验证后与原报有出入**：
+
+| 原编号 | 原报 | 复核结果 |
+|---|---|---|
+| #2 | `graph/queries.py` 15 条 Cypher 常量全是死代码 | **不成立**。逐个统计引用后，只有 `GUARANTEED_BY` 在 `src` 与 `tests` 中均无引用；其余 14 条均有调用方。该常量已列入模块 `__all__`，属公开查询库 API，**保留不动** |
+| #12 | `hops` 死参数 | **成立**，已修（见 B-06） |
+| #8 | `alerts` 漏报主体 | **部分成立**。行为本身是有意的性能优化，不是缺陷；问题在文档表述，已修（见 B-07） |
+
+---
+
+## 十七、第四轮待确认项
+
+| 编号 | 项 | 为什么需要确认 |
+|---|---|---|
+| S-1 | `alerts` 候选池是否需要「全图穷举」模式 | 候选池是性能取舍，但漏报在风控场景有代价。是否需要一个离线全量扫描任务（而非在线接口）需要业务判断 |
+| S-2 | `neighbours()` 在 Neo4j 下的调用代价 | 每次调用是一次 Cypher 查询。相似案例检索会对每个候选主体调用一次，在 10 万实体下是 N+1 查询模式。需要确认是否改为批量邻域查询 |
+| S-3 | `GUARANTEED_BY` 查询常量的去留 | 它未被调用，但在 `__all__` 中公开。删除是破坏性变更，需确认是否算公开 API |
+| S-4 | `ALLOWED_RELATION_TYPES` 与 `ALLOWED_LABELS` 的漂移防护 | 白名单与领域枚举同源，但需确认是否有测试守护「新增 RelationType 时白名单自动更新」而非手工同步 |
+| S-5 | `FileGraphRepository` 作为降级目标的写放大 | Neo4j 不可用时自动降级到它，每次写入全量序列化图谱。生产环境是否应改为拒绝启动 |
+
+## 十八、第四轮变更影响范围
+
+| 类别 | 内容 |
+|---|---|
+| **对外接口** | `RiskService.propagate` 新增可选 `max_hops`；`/api/v1/risk/exposure` 的 `hops` 参数现在真正生效。无破坏性变更 |
+| **对外接口（新增）** | `GraphRepository.neighbours()` 抽象方法（内部接口，非 HTTP API） |
+| **内部行为** | 五处消费方从「读实现细节」改为「读接口」；Neo4j 下 KGQA / 相似案例 / GNN 恢复可用 |
+| **未改动** | 风险评分模型与指标定义、规则文件、实体 ID 生成、图谱 schema、HTTP 响应模型与字段、CLI 命令 |
+| **文档** | `docs/api.md` 的 alerts 章节改为准确描述候选池语义 |
+| **测试** | 377 → 382（新增 `TestStoreAgnosticAccess` 5 项） |

@@ -148,10 +148,25 @@ class RiskService:
 
     # -- propagation --------------------------------------------------------
 
-    def propagate(self, score: RiskScore, *, today: date | None = None) -> list[Any]:
-        """Propagate one entity's risk and return the affected entities."""
+    def propagate(
+        self,
+        score: RiskScore,
+        *,
+        today: date | None = None,
+        max_hops: int | None = None,
+    ) -> list[Any]:
+        """Propagate one entity's risk and return the affected entities.
+
+        ``max_hops`` narrows the result to the entities within that many
+        hops. The propagation itself always runs with the configured depth,
+        so a narrow request cannot produce a different path set — it only
+        reports less of it.
+        """
         assert self._propagator is not None
-        return self._propagator.propagate(score, today=today).affected
+        affected = self._propagator.propagate(score, today=today).affected
+        if max_hops is None:
+            return affected
+        return [item for item in affected if int(item.get("hops", 0)) <= max_hops]
 
     def exposure_circle(self, entity_id: str, *, max_hops: int = 2) -> list[dict[str, Any]]:
         """The entities directly and indirectly exposed to ``entity_id``."""

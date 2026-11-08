@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import abc
 from datetime import date, timedelta
-from typing import Any
 
 from fin_kg.core.logging import get_logger
 from fin_kg.domain.indicators import RISK_INDICATORS, IndicatorSpec
@@ -104,10 +103,6 @@ class LocalIndicatorEngine(IndicatorEngine):
         self.repository = repository
 
     def measure(self, spec: IndicatorSpec, entity_id: str, *, since: date) -> float | None:
-        snapshot = getattr(self.repository, "snapshot", None)
-        if snapshot is None:
-            return None
-
         if (
             spec.id.startswith("IND-LIT")
             or spec.id.startswith("IND-PEN")
@@ -115,19 +110,19 @@ class LocalIndicatorEngine(IndicatorEngine):
             or spec.id.startswith("IND-NEG")
             or spec.id.startswith("IND-DEF")
         ):
-            return self._count_events(snapshot, spec, entity_id, since)
+            return self._count_events(spec, entity_id, since)
         if spec.id == "IND-ENF-001":
-            exposure = self._sum_event_amounts(snapshot, entity_id, since, "enforcement")
-            return self._ratio_to_capital(snapshot, entity_id, exposure)
+            exposure = self._sum_event_amounts(entity_id, since, "enforcement")
+            return self._ratio_to_capital(entity_id, exposure)
         if spec.id == "IND-GUA-001":
-            exposure = self._sum_guarantees(snapshot, entity_id)
-            return self._ratio_to_capital(snapshot, entity_id, exposure)
+            exposure = self._sum_guarantees(entity_id)
+            return self._ratio_to_capital(entity_id, exposure)
         if spec.id == "IND-CHN-001":
-            return self._max_chain_depth(snapshot, entity_id)
+            return self._max_chain_depth(entity_id)
         if spec.id == "IND-HLD-001":
-            return self._max_shareholding(snapshot, entity_id)
+            return self._max_shareholding(entity_id)
         if spec.id == "IND-CTL-001":
-            return self._legal_rep_risk(snapshot, entity_id)
+            return self._legal_rep_risk(entity_id)
 
         # An indicator that this engine cannot measure locally is not an
         # error — the local store is a development and offline path, and the
@@ -141,15 +136,14 @@ class LocalIndicatorEngine(IndicatorEngine):
         )
         return None
 
-    @staticmethod
-    def _ratio_to_capital(snapshot: Any, entity_id: str, exposure: float) -> float:
+    def _ratio_to_capital(self, entity_id: str, exposure: float) -> float:
         """Divide an exposure by the registered capital of the entity.
 
         The registered capital is the only scale reference that is present on
         every company in the graph, which is what makes the ratio comparable
         across entities of very different sizes.
         """
-        node = snapshot.nodes.get(entity_id, {})
+        node = self.repository.get_node(entity_id) or {}
         capital = float(node.get("regCapital") or 0.0)
         if capital <= 0:
             return 0.0
@@ -166,15 +160,13 @@ class LocalIndicatorEngine(IndicatorEngine):
         }
         return mapping.get(spec.id, set())
 
-    def _count_events(
-        self, snapshot: Any, spec: IndicatorSpec, entity_id: str, since: date
-    ) -> float | None:
+    def _count_events(self, spec: IndicatorSpec, entity_id: str, since: date) -> float | None:
         wanted = self._event_types_for(spec)
         count = 0
-        for edge in snapshot.adjacency.get(entity_id, []):
+        for edge in self.repository.neighbours(entity_id):
             if edge.get("relationType") != "INVOLVED_IN":
                 continue
-            target = snapshot.nodes.get(edge["target"], {})
+            target = self.repository.get_node(edge["target"]) or {}
             if target.get("eventType") not in wanted:
                 continue
             occurred = target.get("occurredDate")
@@ -183,14 +175,12 @@ class LocalIndicatorEngine(IndicatorEngine):
             count += 1
         return float(count)
 
-    def _sum_event_amounts(
-        self, snapshot: Any, entity_id: str, since: date, event_type: str
-    ) -> float | None:
+    def _sum_event_amounts(self, entity_id: str, since: date, event_type: str) -> float | None:
         total = 0.0
-        for edge in snapshot.adjacency.get(entity_id, []):
+        for edge in self.repository.neighbours(entity_id):
             if edge.get("relationType") != "INVOLVED_IN":
                 continue
-            target = snapshot.nodes.get(edge["target"], {})
+            target = self.repository.get_node(edge["target"]) or {}
             if target.get("eventType") != event_type:
                 continue
             occurred = target.get("occurredDate")
@@ -199,9 +189,9 @@ class LocalIndicatorEngine(IndicatorEngine):
             total += float(target.get("amount") or 0.0)
         return total
 
-    def _sum_guarantees(self, snapshot: Any, entity_id: str) -> float | None:
+    def _sum_guarantees(self, entity_id: str) -> float | None:
         total = 0.0
-        for edge in snapshot.adjacency.get(entity_id, []):
+        for edge in self.repository.neighbours(entity_id):
             if edge.get("relationType") != "GUARANTEE":
                 continue
             if edge["source"] != entity_id:
@@ -209,14 +199,14 @@ class LocalIndicatorEngine(IndicatorEngine):
             total += float(edge.get("guaranteed_amount") or 0.0)
         return total
 
-    def _max_chain_depth(self, snapshot: Any, entity_id: str) -> float | None:
+    def _max_chain_depth(self, entity_id: str) -> float | None:
         depth = 0
         frontier = {entity_id}
         seen = {entity_id}
         for _ in range(5):
             next_frontier: set[str] = set()
             for current in frontier:
-                for edge in snapshot.adjacency.get(current, []):
+                for edge in self.repository.neighbours(current):
                     if edge.get("relationType") != "GUARANTEE":
                         continue
                     if edge["source"] != current:
@@ -231,7 +221,7 @@ class LocalIndicatorEngine(IndicatorEngine):
             frontier = next_frontier
         return float(depth)
 
-    def _max_shareholding(self, snapshot: Any, entity_id: str) -> float | None:
+    def _max_shareholding(self, entity_id: str) -> float | None:
         """The largest shareholder's stake.
 
         ``None`` is returned when no shareholder is known. Returning ``0``
@@ -241,7 +231,7 @@ class LocalIndicatorEngine(IndicatorEngine):
         """
         best = 0.0
         found = False
-        for edge in snapshot.adjacency.get(entity_id, []):
+        for edge in self.repository.neighbours(entity_id):
             if edge.get("relationType") != "HOLD":
                 continue
             if edge["target"] != entity_id:
@@ -250,14 +240,14 @@ class LocalIndicatorEngine(IndicatorEngine):
             best = max(best, float(edge.get("percent") or 0.0))
         return best if found else None
 
-    def _legal_rep_risk(self, snapshot: Any, entity_id: str) -> float | None:
+    def _legal_rep_risk(self, entity_id: str) -> float | None:
         best = 0.0
-        for edge in snapshot.adjacency.get(entity_id, []):
+        for edge in self.repository.neighbours(entity_id):
             if edge.get("relationType") != "LEGAL_REP":
                 continue
             if edge["target"] != entity_id:
                 continue
-            person = snapshot.nodes.get(edge["source"], {})
+            person = self.repository.get_node(edge["source"]) or {}
             best = max(best, float(person.get("riskScore") or 0.0))
         return best
 

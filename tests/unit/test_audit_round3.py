@@ -273,3 +273,101 @@ class TestLocalIndicatorEngineVisibility:
         assert any("IND-NEW-999" in record.getMessage() for record in caplog.records), (
             "未实现的指标必须留下告警，否则会被误读为「无数据」"
         )
+
+
+class TestStoreAgnosticAccess:
+    """C-02 — consumers must not depend on an in-memory implementation detail.
+
+    ``GraphSnapshot`` is not part of the repository interface. Code that
+    reads ``repository.snapshot`` returns nothing on the production store,
+    so the feature silently disappears instead of failing loudly.
+    """
+
+    @pytest.fixture
+    def graph(self):
+        repository = InMemoryGraphRepository()
+        repository.ensure_schema()
+        IngestionPipeline(repository).run(
+            [SyntheticSourceAdapter(companies=20, events_per_company=2.0, seed=3)]
+        )
+        return repository
+
+    @pytest.fixture
+    def store_without_snapshot(self, graph):
+        """A store that exposes the interface but has no ``snapshot``."""
+
+        class StoreWithoutSnapshot:
+            def __init__(self, real):
+                self._real = real
+
+            def find_nodes(self, *args, **kwargs):
+                return self._real.find_nodes(*args, **kwargs)
+
+            def get_node(self, *args, **kwargs):
+                return self._real.get_node(*args, **kwargs)
+
+            def traverse(self, *args, **kwargs):
+                return self._real.traverse(*args, **kwargs)
+
+            def neighbours(self, *args, **kwargs):
+                return self._real.neighbours(*args, **kwargs)
+
+            def stats(self):
+                return self._real.stats()
+
+        store = StoreWithoutSnapshot(graph)
+        assert not hasattr(store, "snapshot")
+        return store
+
+    def test_the_feature_extractor_still_produces_features(
+        self, graph, store_without_snapshot
+    ) -> None:
+        from fin_kg.risk.gnn.features import FeatureExtractor
+
+        companies = [node["id"] for node in graph.find_nodes("Company")]
+        subgraph = FeatureExtractor(store_without_snapshot).extract(
+            companies, max_hops=2, max_nodes=10
+        )
+        assert subgraph.features.shape[0] == len(companies[:10])
+        assert subgraph.features.any(), "无 snapshot 的仓储下特征全零"
+
+    def test_the_feature_vector_matches_the_in_memory_result(
+        self, graph, store_without_snapshot
+    ) -> None:
+        import numpy as np
+
+        from fin_kg.research.similarity import SimilarCaseFinder
+
+        entity_id = graph.find_nodes("Company")[0]["id"]
+        expected = SimilarCaseFinder(graph).feature_vector(entity_id)
+        actual = SimilarCaseFinder(store_without_snapshot).feature_vector(entity_id)
+        assert np.allclose(expected, actual)
+
+    def test_similar_cases_are_found_without_a_snapshot(
+        self, graph, store_without_snapshot
+    ) -> None:
+        from fin_kg.research.similarity import SimilarCaseFinder
+
+        entity_id = graph.find_nodes("Company")[0]["id"]
+        expected = SimilarCaseFinder(graph).find(entity_id, top_k=3, min_similarity=0.0)
+        actual = SimilarCaseFinder(store_without_snapshot).find(
+            entity_id, top_k=3, min_similarity=0.0
+        )
+        assert len(expected) == len(actual)
+        assert [case.entity_id for case in expected] == [case.entity_id for case in actual]
+
+    def test_the_question_answer_carries_evidence_without_a_snapshot(
+        self, graph, store_without_snapshot
+    ) -> None:
+        from fin_kg.research.kgqa import KGQA
+
+        answer = KGQA(store_without_snapshot).ask("风险最高的前 3 家公司")
+        assert answer.answer.strip()
+        assert answer.evidence, "无 snapshot 的仓储下问答没有证据"
+
+    def test_the_repository_exposes_neighbours(self, graph) -> None:
+        entity_id = graph.find_nodes("Company")[0]["id"]
+        edges = graph.neighbours(entity_id)
+        assert isinstance(edges, list)
+        for edge in edges:
+            assert {"source", "target", "relationType"} <= set(edge)

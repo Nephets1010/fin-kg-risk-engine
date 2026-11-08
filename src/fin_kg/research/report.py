@@ -140,15 +140,13 @@ class ReportGenerator:
         )
 
     def _ownership_section(self, entity_id: str, node: dict[str, Any]) -> ReportSection:
-        snapshot = getattr(self.repository, "snapshot", None)
         holders: list[str] = []
-        if snapshot is not None:
-            for edge in snapshot.adjacency.get(entity_id, []):
-                if edge.get("relationType") != "HOLD" or edge.get("target") != entity_id:
-                    continue
-                holder = snapshot.nodes.get(str(edge.get("source")), {})
-                percent = float(edge.get("percent") or 0.0) * 100
-                holders.append(f"{holder.get('name', edge.get('source'))}：{percent:.2f}%")
+        for edge in self.repository.neighbours(entity_id):
+            if edge.get("relationType") != "HOLD" or edge.get("target") != entity_id:
+                continue
+            holder = self.repository.get_node(str(edge.get("source"))) or {}
+            percent = float(edge.get("percent") or 0.0) * 100
+            holders.append(f"{holder.get('name', edge.get('source'))}：{percent:.2f}%")
         holders.sort(key=lambda item: float(item.rsplit("：", 1)[1].rstrip("%")), reverse=True)
         return ReportSection(
             title="股权结构",
@@ -196,21 +194,19 @@ class ReportGenerator:
         )
 
     def _event_section(self, entity_id: str) -> ReportSection:
-        snapshot = getattr(self.repository, "snapshot", None)
         events: list[str] = []
-        if snapshot is not None:
-            for edge in snapshot.adjacency.get(entity_id, []):
-                if edge.get("relationType") != "INVOLVED_IN":
-                    continue
-                if edge.get("target") != entity_id:
-                    continue
-                event = snapshot.nodes.get(str(edge.get("source")), {})
-                events.append(
-                    f"{event.get('occurredDate', '日期未知')}｜"
-                    f"{event.get('eventType', '未知类型')}｜"
-                    f"{event.get('severity', '未知')}｜"
-                    f"{event.get('description') or '无描述'}"
-                )
+        for edge in self.repository.neighbours(entity_id):
+            if edge.get("relationType") != "INVOLVED_IN":
+                continue
+            if edge.get("target") != entity_id:
+                continue
+            event = self.repository.get_node(str(edge.get("source"))) or {}
+            events.append(
+                f"{event.get('occurredDate', '日期未知')}｜"
+                f"{event.get('eventType', '未知类型')}｜"
+                f"{event.get('severity', '未知')}｜"
+                f"{event.get('description') or '无描述'}"
+            )
         events.sort(reverse=True)
         return ReportSection(
             title="风险事件",
