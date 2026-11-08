@@ -49,6 +49,8 @@ def _score_response(score: RiskScore) -> RiskScoreResponse:
             for reading in score.readings
         ],
         explanation=score.explain(),
+        modelScore=score.model_score,
+        scoreGap=score.score_gap,
     )
 
 
@@ -101,9 +103,17 @@ def entity_score(entity_id: str, service: RiskServiceDep) -> RiskScoreResponse:
 def risk_rank(
     service: RiskServiceDep,
     limit: int = Query(default=20, ge=1, le=200),
+    candidates: int | None = Query(
+        default=None,
+        ge=1,
+        le=100_000,
+        description=(
+            "只对风险分最高的 N 个候选重新评分。留空则全量评分（结果最准，但耗时随图规模线性增长）"
+        ),
+    ),
 ) -> RiskRankResponse:
     """Return the highest-risk entities."""
-    scores = service.rank(limit=limit)
+    scores = service.rank(limit=limit, candidates=candidates)
     return RiskRankResponse(items=[_score_response(score) for score in scores], total=len(scores))
 
 

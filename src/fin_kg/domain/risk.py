@@ -52,11 +52,27 @@ class RiskScore(BaseModel):
     readings: list[IndicatorReading] = Field(default_factory=list)
     model_version: str = "baseline-1.0.0"
     computed_at: datetime = Field(default_factory=utcnow)
+    #: The GraphSAGE score, when a model is trained. ``None`` means "no
+    #: model available", not "the model says zero".
+    model_score: float | None = None
+    #: The model's own version tag, so the two scores stay attributable.
+    model_score_version: str | None = None
 
     @property
     def top_contributors(self) -> list[IndicatorReading]:
         """The three readings that contributed the most, worst first."""
         return sorted(self.readings, key=lambda r: r.contribution, reverse=True)[:3]
+
+    @property
+    def score_gap(self) -> float | None:
+        """How far the model score sits from the baseline score.
+
+        A large gap is a signal in itself: it marks the entities where the
+        graph structure says something the indicator catalogue does not.
+        """
+        if self.model_score is None:
+            return None
+        return round(self.model_score - self.score, 2)
 
     def explain(self) -> str:
         """A one-paragraph, human-readable justification."""

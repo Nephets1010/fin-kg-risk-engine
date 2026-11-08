@@ -94,8 +94,19 @@ class GraphRepository(abc.ABC):
         """Return a node's properties, or ``None`` when it does not exist."""
 
     @abc.abstractmethod
-    def find_nodes(self, label: str, **filters: Any) -> list[dict[str, Any]]:
-        """Return nodes matching a label and exact property filters."""
+    def find_nodes(
+        self,
+        label: str,
+        *,
+        limit: int | None = None,
+        order_by: str | None = None,
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
+        """Return nodes matching a label and exact property filters.
+
+        ``limit`` bounds the result set and ``order_by`` sorts it; both are
+        hints the implementation may push down to the store.
+        """
 
     @abc.abstractmethod
     def traverse(
@@ -117,6 +128,15 @@ class GraphRepository(abc.ABC):
     @abc.abstractmethod
     def update_properties(self, node_id: str, properties: dict[str, Any]) -> bool:
         """Merge properties onto an existing node. Returns ``True`` on success."""
+
+    @abc.abstractmethod
+    def update_properties_bulk(self, updates: dict[str, dict[str, Any]]) -> int:
+        """Merge properties onto many nodes in one round trip.
+
+        Writing the risk score of a hundred entities one query at a time is
+        the classic N+1 write. The bulk form issues a single statement.
+        Returns the number of nodes updated.
+        """
 
     @abc.abstractmethod
     def stats(self) -> dict[str, int]:
@@ -198,13 +218,24 @@ class InMemoryGraphRepository(GraphRepository):
     def get_node(self, node_id: str) -> dict[str, Any] | None:
         return self.snapshot.nodes.get(node_id)
 
-    def find_nodes(self, label: str, **filters: Any) -> list[dict[str, Any]]:
+    def find_nodes(
+        self,
+        label: str,
+        *,
+        limit: int | None = None,
+        order_by: str | None = None,
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for node_id, properties in self.snapshot.nodes.items():
             if label not in self.snapshot.node_labels.get(node_id, set()):
                 continue
             if all(properties.get(key) == value for key, value in filters.items()):
                 results.append({"id": node_id, **properties})
+        if order_by:
+            results.sort(key=lambda node: float(node.get(order_by) or 0.0), reverse=True)
+        if limit is not None:
+            results = results[: max(1, int(limit))]
         return results
 
     def traverse(
@@ -280,6 +311,14 @@ class InMemoryGraphRepository(GraphRepository):
             return False
         node.update(properties)
         return True
+
+    def update_properties_bulk(self, updates: dict[str, dict[str, Any]]) -> int:
+        """Merge properties onto many nodes."""
+        updated = 0
+        for node_id, properties in updates.items():
+            if self.update_properties(node_id, properties):
+                updated += 1
+        return updated
 
     def stats(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -515,10 +554,30 @@ class Neo4jGraphRepository(GraphRepository):
         rows = self._run("MATCH (n:Entity {id:$id}) RETURN n{.*} AS node LIMIT 1", {"id": node_id})
         return rows[0]["node"] if rows else None
 
-    def find_nodes(self, label: str, **filters: Any) -> list[dict[str, Any]]:
+    def find_nodes(
+        self,
+        label: str,
+        *,
+        limit: int | None = None,
+        order_by: str | None = None,
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
+        """Return the nodes of a label, optionally bounded and ordered.
+
+        ``limit`` and ``order_by`` are pushed into the query so that the
+        database does the work. Asking Neo4j for 100k nodes and discarding
+        99 980 of them in Python is the difference between a 50 ms and a
+        10 s request.
+        """
+        clauses = []
+        if order_by:
+            clauses.append(f"ORDER BY n.{order_by} DESC")
+        if limit is not None:
+            clauses.append(f"LIMIT {max(1, int(limit))}")
+        tail = (" " + " ".join(clauses)) if clauses else ""
         rows = self._run(
             f"MATCH (n:{label}) WHERE all(k IN keys($filters) WHERE n[k] = $filters[k]) "
-            "RETURN n{.*} AS node",
+            f"RETURN n{{.*}} AS node{tail}",
             {"filters": filters},
         )
         return [row["node"] for row in rows]
@@ -571,6 +630,22 @@ class Neo4jGraphRepository(GraphRepository):
             {"id": node_id, "props": properties},
         )
         return bool(rows and rows[0].get("updated"))
+
+    def update_properties_bulk(self, updates: dict[str, dict[str, Any]]) -> int:
+        """Merge properties onto many nodes with one statement."""
+        if not updates:
+            return 0
+        rows = self._run(
+            "UNWIND $rows AS row "
+            "MATCH (n:Entity {id: row.id}) SET n += row.props "
+            "RETURN count(n) AS updated",
+            {
+                "rows": [
+                    {"id": node_id, "props": properties} for node_id, properties in updates.items()
+                ]
+            },
+        )
+        return int(rows[0]["updated"]) if rows else 0
 
     def stats(self) -> dict[str, int]:
         node_rows = self._run(

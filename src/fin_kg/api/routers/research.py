@@ -7,12 +7,14 @@ from fastapi import APIRouter, HTTPException, Query
 from fin_kg.api.deps import KGQADep, ReportDep, RiskServiceDep
 from fin_kg.api.schemas import (
     AnswerResponse,
+    AskRequest,
     ErrorResponse,
     EvidenceResponse,
     ReportResponse,
     ReportSectionResponse,
     SimilarCaseResponse,
 )
+from fin_kg.core.errors import ValidationError
 from fin_kg.research.similarity import SimilarCaseFinder
 
 router = APIRouter(prefix="/api/v1/research", tags=["research"])
@@ -29,15 +31,15 @@ ERROR_RESPONSES = {
     summary="自然语言图谱问答",
     responses=ERROR_RESPONSES,
 )
-def ask(question: dict, kgqa: KGQADep) -> AnswerResponse:
+def ask(request: AskRequest, kgqa: KGQADep) -> AnswerResponse:
     """Answer a natural-language question about the graph.
 
     The response always carries the evidence path, so an analyst can verify
     every claim against the graph.
     """
     try:
-        answer = kgqa.ask(str(question.get("question", "")))
-    except Exception as exc:  # mapped to a 422 by the handler
+        answer = kgqa.ask(request.question)
+    except ValidationError as exc:
         raise HTTPException(
             status_code=422,
             detail={"code": "validation_error", "message": str(exc)},

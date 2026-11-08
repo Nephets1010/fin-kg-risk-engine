@@ -25,9 +25,13 @@ import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fin_kg.core.errors import ValidationError
+from fin_kg.core.logging import get_logger
 from fin_kg.domain.entities import Company, GraphNode
+
+logger = get_logger(__name__)
 
 #: Company-name suffixes that carry no distinguishing information.
 _NOISE_SUFFIXES = (
@@ -110,7 +114,48 @@ class EntityResolver:
         self._name_index: dict[str, list[str]] = {}
         self._region_name_index: dict[tuple[str, str], list[str]] = {}
         self._loose_index: dict[str, list[str]] = {}
-        self._aliases: dict[str, str] = dict(alias_map or {})
+        self._aliases: dict[str, str] = {}
+        for alias, entity_id in (alias_map or {}).items():
+            self.add_alias(alias, entity_id)
+
+    @classmethod
+    def from_alias_file(cls, path: Path) -> EntityResolver:
+        """Build a resolver from a YAML alias file.
+
+        The file maps an alias to a canonical entity id::
+
+            aliases:
+              "华信集团": company-abc123
+              "华信控股": company-abc123
+
+        It is the third level of the alignment cascade and the only one an
+        operator maintains by hand, so it is loaded from a file rather than
+        configured in code. A missing file yields an empty alias table —
+        the cascade still works with the two automatic levels.
+        """
+        resolver = cls()
+        path = Path(path)
+        if not path.exists():
+            logger.info("no alias file at %s; continuing without aliases", path)
+            return resolver
+        import yaml
+
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(payload, dict):
+            raise ValidationError(
+                "the alias file must be a mapping",
+                details={"path": str(path), "type": type(payload).__name__},
+            )
+        aliases = payload.get("aliases") or {}
+        if not isinstance(aliases, dict):
+            raise ValidationError(
+                "the alias file must map aliases to entity ids",
+                details={"path": str(path), "type": type(aliases).__name__},
+            )
+        for alias, entity_id in aliases.items():
+            resolver.add_alias(str(alias), str(entity_id))
+        logger.info("loaded %s aliases from %s", len(aliases), path.name)
+        return resolver
 
     def register(self, node: GraphNode) -> None:
         """Index an already-known node so later records can match it."""

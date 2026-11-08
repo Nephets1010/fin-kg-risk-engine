@@ -253,11 +253,24 @@ class GNNTrainer:
 
     @staticmethod
     def _restrict_edges(edge_index: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        """Keep only the edges whose both endpoints are inside the mask."""
+        """Keep the edges whose both endpoints are inside the mask.
+
+        The surviving edges are **re-indexed** into the compacted node
+        space. Without the remapping the edge indices would still point at
+        the original positions, while the feature matrix has been compacted
+        by the mask — so every edge beyond the first ``mask.sum()`` rows
+        would address a row that no longer exists.
+        """
         if edge_index.size == 0:
             return edge_index
         keep = mask[edge_index[0]] & mask[edge_index[1]]
-        return edge_index[:, keep]
+        kept = edge_index[:, keep]
+        if kept.size == 0:
+            return kept
+        # Map the original node positions onto their compacted positions.
+        remap = np.full(mask.shape[0], -1, dtype=np.int64)
+        remap[np.flatnonzero(mask)] = np.arange(int(mask.sum()), dtype=np.int64)
+        return remap[kept]
 
     def predict(self, subgraph: SubGraph) -> dict[str, float]:
         """Predict the risk probability of every node in a subgraph."""

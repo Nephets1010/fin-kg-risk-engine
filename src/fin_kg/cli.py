@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from fin_kg import __version__
@@ -107,6 +109,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
     pipeline = IngestionPipeline(
         _repository(),
+        resolver=_resolver(settings),
         batch_size=settings.ingestion.batch_size,
         checkpoint_dir=settings.resolve_path(settings.ingestion.checkpoint_dir),
     )
@@ -114,6 +117,13 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     report = pipeline.run([source], since=since, limit=args.limit)
     print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
     return 0
+
+
+def _resolver(settings: Any) -> Any:
+    """Build the entity resolver, including the operator's alias table."""
+    from fin_kg.graph.alignment import EntityResolver
+
+    return EntityResolver.from_alias_file(settings.resolve_path(settings.ingestion.alias_file))
 
 
 def cmd_seed(args: argparse.Namespace) -> int:
@@ -125,7 +135,11 @@ def cmd_seed(args: argparse.Namespace) -> int:
     adapter = SyntheticSourceAdapter(
         companies=args.companies, events_per_company=args.events, seed=args.seed
     )
-    pipeline = IngestionPipeline(_repository(), batch_size=settings.ingestion.batch_size)
+    pipeline = IngestionPipeline(
+        _repository(),
+        resolver=_resolver(settings),
+        batch_size=settings.ingestion.batch_size,
+    )
     report = pipeline.run([adapter])
     print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
     return 0
@@ -136,7 +150,73 @@ def cmd_score(args: argparse.Namespace) -> int:
     service = _risk_service(_repository())
     scores = service.rank(limit=args.limit)
     for score in scores:
-        print(f"{score.score:6.2f}  {score.level.value:<8} {score.entity_name or score.entity_id}")
+        model = f"  模型分 {score.model_score:6.2f}" if score.model_score is not None else ""
+        print(
+            f"{score.score:6.2f}  {score.level.value:<8} "
+            f"{score.entity_name or score.entity_id}{model}"
+        )
+    return 0
+
+
+def cmd_gnn_train(args: argparse.Namespace) -> int:
+    """Train the GraphSAGE risk model.
+
+    Labels come either from a CSV file or, by default, from the rule
+    engine — the weak supervision described in ADR-0004.
+    """
+    from fin_kg.risk.gnn.service import GnnRiskService
+    from fin_kg.risk.gnn.trainer import LabelStore
+
+    repository = _repository()
+    service = GnnRiskService(repository=repository)
+
+    labels = LabelStore.from_csv(args.labels) if args.labels else _weak_labels(repository)
+
+    report = service.train(labels, model_path=Path(args.model_path))
+    print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+    print(f"\nmodel written to {args.model_path}")
+    return 0
+
+
+def _weak_labels(repository: Any) -> Any:
+    """Derive labels from the rule engine (weak supervision)."""
+    from fin_kg.risk.gnn.trainer import LabelStore, WeakSupervisor
+
+    service = _risk_service(repository)
+    supervisor = WeakSupervisor(min_severity=args_min_severity())
+    labels = LabelStore()
+    for score in service.rank(limit=1000):
+        severities = [alert.severity.value for alert in service.assess(score.entity_id).alerts]
+        labels.set(score.entity_id, supervisor.label(severities))
+    return labels
+
+
+def args_min_severity() -> str:
+    """The severity at which weak supervision calls an entity risky."""
+    return os.environ.get("FIN_KG_GNN_LABEL_SEVERITY", "major")
+
+
+def cmd_gnn_load(args: argparse.Namespace) -> int:
+    """Load a trained model and report the model scores."""
+    from fin_kg.risk.gnn.service import GnnRiskService
+
+    repository = _repository()
+    service = GnnRiskService(repository=repository)
+    service.load(Path(args.model_path))
+    companies = repository.find_nodes("Company")
+    scores = service.score_many([str(company["id"]) for company in companies[: args.limit]])
+    for score in scores:
+        print(f"{score.score:6.2f}  {score.entity_id}")
+    print(f"\n{len(scores)} 个主体已评分")
+    return 0
+
+
+def cmd_gnn_status(args: argparse.Namespace) -> int:
+    """Report the state of the GNN model."""
+    from fin_kg.risk.gnn.service import GnnRiskService
+
+    service = GnnRiskService(repository=_repository())
+    print(json.dumps(service.describe(), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -236,6 +316,26 @@ def build_parser() -> argparse.ArgumentParser:
     score = subparsers.add_parser("score", help="重算风险分")
     score.add_argument("--limit", type=int, default=20)
     score.set_defaults(func=cmd_score)
+
+    gnn = subparsers.add_parser("gnn", help="GNN 图神经网络模型")
+    gnn_sub = gnn.add_subparsers(dest="gnn_command", required=True)
+
+    gnn_train = gnn_sub.add_parser("train", help="训练图神经网络模型")
+    gnn_train.add_argument(
+        "--labels",
+        default=None,
+        help="标签 CSV（entity_id,label）；缺省时用规则引擎做弱监督",
+    )
+    gnn_train.add_argument("--model-path", default="data/models/graphsage.json")
+    gnn_train.set_defaults(func=cmd_gnn_train)
+
+    gnn_load = gnn_sub.add_parser("load", help="加载模型并输出模型分")
+    gnn_load.add_argument("--model-path", default="data/models/graphsage.json")
+    gnn_load.add_argument("--limit", type=int, default=20)
+    gnn_load.set_defaults(func=cmd_gnn_load)
+
+    gnn_status = gnn_sub.add_parser("status", help="查看模型状态")
+    gnn_status.set_defaults(func=cmd_gnn_status)
 
     report = subparsers.add_parser("report", help="生成投研简报")
     report.add_argument("entity_id")

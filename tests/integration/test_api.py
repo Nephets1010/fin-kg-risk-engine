@@ -74,7 +74,7 @@ class TestGraphEndpoints:
     def test_missing_entity_returns_404(self, seeded_client: TestClient) -> None:
         response = seeded_client.get("/api/v1/graph/entities/does-not-exist")
         assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "not_found"
+        assert response.json()["code"] == "not_found"
 
     def test_neighbourhood(self, seeded_client: TestClient) -> None:
         companies = seeded_client.get("/api/v1/graph/entities").json()["items"]
@@ -135,6 +135,29 @@ class TestResearchEndpoints:
         response = seeded_client.post("/api/v1/research/ask", json={"question": ""})
         assert response.status_code in (422, 500)
 
+    def test_ask_rejects_a_missing_question(self, seeded_client: TestClient) -> None:
+        response = seeded_client.post("/api/v1/research/ask", json={})
+        assert response.status_code == 422
+
+    def test_ask_rejects_unknown_fields(self, seeded_client: TestClient) -> None:
+        response = seeded_client.post(
+            "/api/v1/research/ask", json={"question": "风险最高的公司", "bogus": 1}
+        )
+        assert response.status_code == 422
+
+    def test_ask_returns_404_for_an_unknown_entity(self, seeded_client: TestClient) -> None:
+        """A missing entity must surface as 404, not as a generic 422.
+
+        ``docs/api.md`` declares 404 as "实体/任务不存在" and the research
+        router lists 404 in its ``ERROR_RESPONSES``. Only the question's
+        validity is a 422.
+        """
+        response = seeded_client.post(
+            "/api/v1/research/ask", json={"question": "不存在于此图谱的公司的股权结构"}
+        )
+        assert response.status_code == 404
+        assert response.json()["code"] == "not_found"
+
     def test_report(self, seeded_client: TestClient) -> None:
         companies = seeded_client.get("/api/v1/graph/entities").json()["items"]
         entity_id = companies[0]["id"]
@@ -180,9 +203,35 @@ class TestErrorEnvelope:
     def test_errors_use_a_stable_envelope(self, seeded_client: TestClient) -> None:
         response = seeded_client.get("/api/v1/graph/entities/missing")
         body = response.json()
-        assert "code" in body["detail"]
-        assert "message" in body["detail"]
+        assert "code" in body
+        assert "message" in body
 
     def test_request_id_is_returned(self, client: TestClient) -> None:
         response = client.get("/health", headers={"X-Request-ID": "test-request-id"})
         assert response.headers.get("X-Request-ID") == "test-request-id"
+
+    def test_every_error_path_uses_the_same_envelope(self, seeded_client: TestClient) -> None:
+        """One error taxonomy must mean one response shape.
+
+        ``docs/api.md`` declares a flat ``{code, message, details}`` envelope.
+        Routers that raise ``HTTPException`` and the platform's own error
+        classes must not produce two different shapes, or a client needs two
+        parsers.
+        """
+        responses = [
+            # router-raised HTTPException
+            seeded_client.get("/api/v1/graph/entities/does-not-exist"),
+            # platform error class (NotFoundError)
+            seeded_client.get("/api/v1/risk/entities/does-not-exist/score"),
+            # validation failure
+            seeded_client.post("/api/v1/research/ask", json={"question": ""}),
+            # query-parameter validation failure
+            seeded_client.get("/api/v1/risk/alerts", params={"min_severity": "nonsense"}),
+        ]
+        for response in responses:
+            assert response.status_code >= 400
+            body = response.json()
+            assert set(body) <= {"code", "message", "details"}, body
+            assert isinstance(body["code"], str) and body["code"]
+            assert isinstance(body["message"], str) and body["message"]
+            assert "detail" not in body

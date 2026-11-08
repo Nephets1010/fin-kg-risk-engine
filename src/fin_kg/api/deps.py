@@ -17,6 +17,7 @@ so the API is always startable — which matters for CI and for a first run.
 
 from __future__ import annotations
 
+import weakref
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
@@ -41,6 +42,7 @@ from fin_kg.research.kgqa import KGQA
 from fin_kg.research.report import ReportGenerator
 from fin_kg.research.similarity import SimilarCaseFinder
 from fin_kg.risk.engine import RuleEngine
+from fin_kg.risk.gnn.service import GnnRiskService
 from fin_kg.risk.service import RiskService, RiskServiceConfig
 
 logger = get_logger(__name__)
@@ -95,12 +97,17 @@ def get_repository() -> GraphRepository:
 
 #: Per-repository service instances, so that a repository swap (in tests, or
 #: after a reconnect) never serves a service bound to the previous store.
-_SERVICES: dict[int, dict[str, Any]] = {}
+#:
+#: The key is the repository object itself rather than ``id(repository)``:
+#: CPython reuses the memory address of a freed object, so an id-keyed cache
+#: can hand a caller the services of a *different* repository that happened
+#: to be allocated at the same address.
+_SERVICES: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
 
 
 def _service_for(repository: GraphRepository, name: str, factory: Any) -> Any:
     """Return the memoised service instance for a repository."""
-    bucket = _SERVICES.setdefault(id(repository), {})
+    bucket = _SERVICES.setdefault(repository, {})
     if name not in bucket:
         bucket[name] = factory()
     return bucket[name]
@@ -118,6 +125,20 @@ def get_rules() -> RuleEngine:
         return RuleEngine(rules=[])
 
 
+def get_gnn_service(repository: GraphRepository = Depends(get_repository)) -> GnnRiskService:
+    """Return the GNN risk service bound to the active repository.
+
+    The service is created without a trained model; loading one is an
+    explicit operation (``fin-kg gnn load``), because a model file is a
+    deployment artefact rather than something to guess at startup.
+    """
+    return _service_for(
+        repository,
+        "gnn_service",
+        lambda: GnnRiskService(repository=repository),
+    )
+
+
 def get_risk_service(repository: GraphRepository = Depends(get_repository)) -> RiskService:
     """Return the risk service bound to the active repository."""
     return _service_for(
@@ -127,6 +148,7 @@ def get_risk_service(repository: GraphRepository = Depends(get_repository)) -> R
             repository=repository,
             rules=get_rules(),
             indicator_engine=_build_indicator_engine(repository),
+            gnn=get_gnn_service(repository),
             config=RiskServiceConfig(
                 alert_threshold=get_settings().risk.alert_threshold,
                 critical_threshold=get_settings().risk.critical_threshold,

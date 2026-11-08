@@ -308,3 +308,67 @@ class TestPipeline:
     def test_no_self_loops(self, seeded_repository) -> None:
         for edge in seeded_repository.snapshot.edges:
             assert edge["source"] != edge["target"]
+
+
+class TestAliasFile:
+    """The third level of the alignment cascade."""
+
+    def test_a_missing_file_yields_an_empty_resolver(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        resolver = EntityResolver.from_alias_file(tmp_path / "absent.yaml")
+        assert resolver is not None
+
+    def test_the_aliases_are_loaded(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        path = tmp_path / "aliases.yaml"
+        path.write_text(
+            "aliases:\n  华信集团: company-abc123\n  华信控股: company-abc123\n",
+            encoding="utf-8",
+        )
+        resolver = EntityResolver.from_alias_file(path)
+        resolution = resolver.resolve_company(name="华信集团", source_key="k")
+        assert resolution.entity_id == "company-abc123"
+        assert resolution.matched_on == "alias"
+
+    def test_an_alias_is_normalised(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        path = tmp_path / "aliases.yaml"
+        path.write_text("aliases:\n  华信集团有限公司: company-abc123\n", encoding="utf-8")
+        resolver = EntityResolver.from_alias_file(path)
+        resolution = resolver.resolve_company(name="华信集团", source_key="k")
+        assert resolution.entity_id == "company-abc123"
+
+    def test_the_alias_beats_the_name_match(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        path = tmp_path / "aliases.yaml"
+        path.write_text("aliases:\n  华信集团: company-canonical\n", encoding="utf-8")
+        resolver = EntityResolver.from_alias_file(path)
+        resolver.make_company(name="华信集团有限公司", source_key="k1")
+        resolution = resolver.resolve_company(name="华信集团", source_key="k2")
+        assert resolution.entity_id == "company-canonical"
+        assert resolution.matched_on == "alias"
+
+    def test_the_credit_code_still_wins_over_the_alias(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        path = tmp_path / "aliases.yaml"
+        path.write_text("aliases:\n  华信集团: company-alias\n", encoding="utf-8")
+        resolver = EntityResolver.from_alias_file(path)
+        resolver.make_company(name="甲公司", credit_code="91110000MA01ABCDEF", source_key="k1")
+        resolution = resolver.resolve_company(
+            name="华信集团", credit_code="91110000MA01ABCDEF", source_key="k2"
+        )
+        assert resolution.matched_on == "credit_code"
+        assert resolution.entity_id != "company-alias"
+
+    def test_a_malformed_alias_file_is_rejected(self, tmp_path) -> None:
+        from fin_kg.graph.alignment import EntityResolver
+
+        path = tmp_path / "aliases.yaml"
+        path.write_text("aliases:\n  - a\n  - b\n", encoding="utf-8")
+        with pytest.raises(ValidationError):
+            EntityResolver.from_alias_file(path)
