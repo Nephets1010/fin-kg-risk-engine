@@ -97,7 +97,6 @@ class RiskPropagator:
 
         paths = self._explore(source_score.entity_id)
         propagated: list[TransmissionPath] = []
-        affected: list[dict[str, object]] = []
         best_by_node: dict[str, TransmissionPath] = {}
 
         for path in paths:
@@ -110,15 +109,20 @@ class RiskPropagator:
             existing = best_by_node.get(terminal)
             if existing is None or path.propagated_score > existing.propagated_score:
                 best_by_node[terminal] = path
-            affected.append(
-                {
-                    "id": terminal,
-                    "name": path.node_names[-1] if path.node_names else "",
-                    "hops": path.hops,
-                    "score": path.propagated_score,
-                    "path": path.to_text(),
-                }
-            )
+
+        # One entry per exposed entity, not per path. An entity reachable
+        # through two chains would otherwise be reported twice, which reads
+        # as two separate exposures to the analyst. The strongest path wins.
+        affected: list[dict[str, object]] = [
+            {
+                "id": path.node_ids[-1],
+                "name": path.node_names[-1] if path.node_names else "",
+                "hops": path.hops,
+                "score": path.propagated_score,
+                "path": path.to_text(),
+            }
+            for path in best_by_node.values()
+        ]
 
         affected.sort(key=lambda item: float(item["score"] or 0), reverse=True)
         max_hops = max((path.hops for path in propagated), default=0)

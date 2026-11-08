@@ -394,10 +394,17 @@ class RuleEngine:
 
 
 def alert_fingerprint(alert: RiskAlert) -> str:
-    """A stable identity for an alert, used for deduplication across runs."""
+    """A stable identity for an alert, used for deduplication across runs.
+
+    The fingerprint is built from the alert's *identity* — the rule that
+    fired and the entity it fired on — and not from its rendered message.
+    The message embeds the current score and the path summary, both of
+    which change between runs; including them would give the same alert a
+    new fingerprint every time and defeat the deduplication.
+    """
     import hashlib
 
-    material = f"{alert.rule_id}|{alert.entity_id}|{alert.message}".encode()
+    material = f"{alert.rule_id}|{alert.entity_id}".encode()
     return hashlib.sha256(material).hexdigest()[:24]
 
 
