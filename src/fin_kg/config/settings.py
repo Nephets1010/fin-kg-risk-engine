@@ -23,6 +23,19 @@ LogFormat = Literal["json", "console"]
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = PACKAGE_ROOT.parent
 
+#: Passwords that ship with the repository's local deployment. They exist so
+#: that ``docker compose up`` works out of the box, and they are refused in
+#: production — see :meth:`Settings._enforce_production_secrets`.
+DEV_DEFAULT_PASSWORDS: frozenset[str] = frozenset(
+    {
+        "fin-kg-dev-password",
+        "neo4j",
+        "password",
+        "changeme",
+        "secret",
+    }
+)
+
 
 class Neo4jSettings(BaseSettings):
     """Connection settings for the graph store."""
@@ -164,10 +177,17 @@ class Settings(BaseSettings):
     def _enforce_production_secrets(self) -> Settings:
         """Refuse to start production without a real Neo4j credential."""
         if self.env == "production":
-            if not self.neo4j.password.get_secret_value():
+            neo4j_password = self.neo4j.password.get_secret_value()
+            if not neo4j_password:
                 raise ValueError(
                     "FIN_KG_NEO4J_PASSWORD must be set in production; "
                     "supply it through a secret manager"
+                )
+            if neo4j_password in DEV_DEFAULT_PASSWORDS:
+                raise ValueError(
+                    "FIN_KG_NEO4J_PASSWORD must not be one of the local development "
+                    "defaults in production; supply a strong password through a "
+                    "secret manager"
                 )
             if self.llm.enabled and not self.llm.api_key.get_secret_value():
                 raise ValueError("FIN_KG_LLM_API_KEY must be set when the LLM backend is enabled")

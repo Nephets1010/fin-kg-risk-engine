@@ -128,6 +128,17 @@ class LocalIndicatorEngine(IndicatorEngine):
             return self._max_shareholding(snapshot, entity_id)
         if spec.id == "IND-CTL-001":
             return self._legal_rep_risk(snapshot, entity_id)
+
+        # An indicator that this engine cannot measure locally is not an
+        # error — the local store is a development and offline path, and the
+        # Cypher engine remains the reference implementation. But silently
+        # returning ``None`` would make a newly added indicator look like
+        # "no data" instead of "not implemented here", so it is logged.
+        logger.warning(
+            "indicator %s is not implemented for the local store; "
+            "it contributes no score here (use the Neo4j store for it)",
+            spec.id,
+        )
         return None
 
     @staticmethod

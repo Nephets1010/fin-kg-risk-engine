@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from fin_kg.api.deps import KGQADep, ReportDep, RiskServiceDep
+from fin_kg.api.deps import KGQADep, ReportDep, RiskServiceDep, require_api_key
 from fin_kg.api.schemas import (
     AnswerResponse,
     AskRequest,
@@ -17,9 +17,14 @@ from fin_kg.api.schemas import (
 from fin_kg.core.errors import ValidationError
 from fin_kg.research.similarity import SimilarCaseFinder
 
-router = APIRouter(prefix="/api/v1/research", tags=["research"])
+router = APIRouter(
+    prefix="/api/v1/research",
+    tags=["research"],
+    dependencies=[Depends(require_api_key)],
+)
 
 ERROR_RESPONSES = {
+    401: {"model": ErrorResponse, "description": "API Key 缺失或错误"},
     404: {"model": ErrorResponse, "description": "实体或问题目标不存在"},
     422: {"model": ErrorResponse, "description": "参数不合法"},
 }
