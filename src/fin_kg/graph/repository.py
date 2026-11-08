@@ -68,6 +68,18 @@ class GraphSnapshot:
         self.node_labels[node_id] = set(labels)
 
     def add_edge(self, source: str, target: str, properties: dict[str, Any]) -> None:
+        """Add or merge an edge.
+
+        The merge key is ``(source, target, relationType)`` — the same key the
+        Neo4j store merges on. A repeated import therefore updates the
+        existing edge instead of appending a duplicate, which keeps the
+        ingestion pipeline idempotent across replays.
+        """
+        relation_type = properties.get("relationType", "")
+        for edge in self.adjacency.get(source, ()):
+            if edge.get("target") == target and edge.get("relationType", "") == relation_type:
+                edge.update(properties)
+                return
         edge = {"source": source, "target": target, **properties}
         self.edges.append(edge)
         self.adjacency[source].append(edge)

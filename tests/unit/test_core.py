@@ -48,6 +48,25 @@ class TestSettings:
         settings = Settings(env="production", neo4j={"password": "s3cret-value"}, api_key="k")
         assert settings.neo4j.password.get_secret_value() == "s3cret-value"
 
+    @pytest.mark.parametrize(
+        "password", ["fin-kg-dev-password", "neo4j", "password", "changeme", "secret"]
+    )
+    def test_production_refuses_the_development_defaults(self, password: str) -> None:
+        """The compose file ships a default password; production must not accept it.
+
+        The deployment checklist says the password must be "set and not the
+        default value". Before this rule existed only the empty password was
+        rejected, so a production deployment that forgot to override the
+        compose default started happily with a known password.
+        """
+        with pytest.raises(ValueError):
+            Settings(env="production", neo4j={"password": password})
+
+    @pytest.mark.parametrize("env", ["development", "test", "staging"])
+    def test_non_production_accepts_the_development_defaults(self, env: str) -> None:
+        settings = Settings(env=env, neo4j={"password": "fin-kg-dev-password"})
+        assert settings.neo4j.password.get_secret_value() == "fin-kg-dev-password"
+
     def test_llm_enabled_requires_api_key_in_production(self) -> None:
         with pytest.raises(ValueError):
             Settings(

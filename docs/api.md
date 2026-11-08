@@ -3,7 +3,9 @@
 基址：`http://localhost:8000`
 交互式文档：`/docs`（Swagger UI）· `/redoc` · `/openapi.json`
 
-鉴权：设置 `FIN_KG_API_KEY` 后，所有请求需携带 `X-API-Key` 头。
+鉴权：设置 `FIN_KG_API_KEY` 后，所有 `/api/v1/*` 请求需携带 `X-API-Key` 头。**未设置 `FIN_KG_API_KEY` 时不鉴权**（便于本地开发）。
+
+运维端点 `/`、`/health`、`/ready`、`/metrics` **始终免鉴权**——容器编排的存活与就绪探针不应持有密钥。生产部署请在网络层限制这些端点的可达范围。
 
 ---
 

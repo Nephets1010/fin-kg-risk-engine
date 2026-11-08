@@ -89,11 +89,14 @@ docker compose exec api pytest tests # 在容器里跑测试
 
 ```bash
 FIN_KG_ENV=production
-FIN_KG_NEO4J_PASSWORD=<强密码>       # 缺失时服务拒绝启动
+FIN_KG_NEO4J_PASSWORD=<强密码>       # 缺失或为开发默认值时服务拒绝启动
 FIN_KG_API_KEY=<随机串>              # 开启接口鉴权
 ```
 
-**生产模式下若 `FIN_KG_NEO4J_PASSWORD` 为空，服务在启动阶段直接抛错** —— 不允许「先起来再说」。这是刻意的：图存储缺失是一个部署错误，必须立刻可见，而不是静默服务一个空图。
+**生产模式下若 `FIN_KG_NEO4J_PASSWORD` 为空，或等于仓库自带的开发默认值
+（`fin-kg-dev-password` / `neo4j` / `password` / `changeme` / `secret`），服务在启动阶段直接抛错**
+—— 不允许「先起来再说」。这是刻意的：图存储缺失是一个部署错误，必须立刻可见，而不是静默服务一个空图；
+而 compose 文件为了让本地 `docker compose up` 开箱即用而内置的默认密码，绝不能被带进生产。
 
 ### 密钥管理
 

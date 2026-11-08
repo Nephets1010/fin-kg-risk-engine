@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from fin_kg.api.deps import JobStoreDep, Repository, get_source_adapters
+from fin_kg.api.deps import JobStoreDep, Repository, get_source_adapters, require_api_key
 from fin_kg.api.schemas import (
     ErrorResponse,
     IngestReportResponse,
@@ -12,9 +12,14 @@ from fin_kg.api.schemas import (
     JobStatusResponse,
 )
 
-router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
+router = APIRouter(
+    prefix="/api/v1/jobs",
+    tags=["jobs"],
+    dependencies=[Depends(require_api_key)],
+)
 
 ERROR_RESPONSES = {
+    401: {"model": ErrorResponse, "description": "API Key 缺失或错误"},
     404: {"model": ErrorResponse, "description": "任务不存在"},
     422: {"model": ErrorResponse, "description": "参数不合法"},
 }

@@ -61,17 +61,57 @@ class Job:
 
 
 class JobStore:
-    """An in-memory job registry guarded by a lock."""
+    """An in-memory job registry guarded by a lock.
 
-    def __init__(self) -> None:
+    The registry is bounded on purpose. Every ingestion request creates one
+    job, so an unbounded registry grows with the request count and would
+    never release memory on a long-lived process. Two limits apply:
+
+    - ``max_jobs`` caps how many jobs are kept; the oldest finished jobs are
+      evicted first.
+    - ``ttl_seconds`` evicts jobs that have been idle for longer than the
+      window, regardless of their status.
+
+    A running job is never evicted by age, because its background thread
+    still writes to it. The count cap may still evict it, which is why the
+    default is generous enough for a normal ingestion cadence.
+    """
+
+    def __init__(self, *, max_jobs: int = 500, ttl_seconds: int = 86_400) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._max_jobs = max(1, int(max_jobs))
+        self._ttl_seconds = max(0, int(ttl_seconds))
+
+    def _evict_locked(self) -> None:
+        """Drop expired and surplus jobs. The caller holds the lock."""
+        now = _now()
+        if self._ttl_seconds > 0:
+            expired = [
+                job_id
+                for job_id, job in self._jobs.items()
+                if job.status != "running"
+                and (now - job.updated_at).total_seconds() > self._ttl_seconds
+            ]
+            for job_id in expired:
+                del self._jobs[job_id]
+
+        surplus = len(self._jobs) - self._max_jobs
+        if surplus > 0:
+            # Evict the oldest finished jobs first; running jobs stay.
+            finished = sorted(
+                (job for job in self._jobs.values() if job.status != "running"),
+                key=lambda job: job.created_at,
+            )
+            for job in finished[:surplus]:
+                del self._jobs[job.id]
 
     def create(self, job_type: str) -> Job:
         """Register a new pending job."""
         job = Job(id=uuid.uuid4().hex, job_type=job_type)
         with self._lock:
             self._jobs[job.id] = job
+            self._evict_locked()
         return job
 
     def get(self, job_id: str) -> Job:
