@@ -5,6 +5,8 @@
 ![Python](https://img.shields.io/badge/Python-3.10%20--%203.12-3776AB?logo=openpyxl)
 ![Neo4j](https://img.shields.io/badge/Neo4j-5.x-47A248?logo=neo4j)
 
+> 文档语言：中文 | [English](README.en.md)
+
 > 金融知识图谱风险预警与智能投研系统
 > 企业级 Python 实现：知识图谱 + 规则引擎 + 图神经网络 + 自然语言投研问答。
 
@@ -558,4 +560,5 @@ cp .env.example .env
 - [API 文档](docs/api.md) —— 全部接口与示例
 - [部署与运维](docs/deployment.md) —— Compose / 生产部署 / 监控告警
 - [知识图谱数据模型](docs/data-model.md) —— 节点、关系、指标、溯源的完整定义
+- [知识图谱数据模型（English）](docs/data-model.en.md) —— 同一文档的英文版
 - [技术债台账](docs/technical-debt.md) —— 已知问题、处置记录与待确认项
