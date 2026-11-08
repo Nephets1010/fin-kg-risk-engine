@@ -1,0 +1,208 @@
+# ---------------------------------------------------------------------------
+# 风险预警规则集 / Risk alert rules
+#
+# 规则由风控人员维护，无需改动 Python 代码即可调整阈值。
+# 每个规则会在告警中记录 ID、版本与命中的指标读数，保证可追溯、可复算。
+#
+# 条件语义为 AND：condition.all 下的每个子句都满足才触发。
+# 支持的算子：gte / gt / lte / lt / eq / neq / between / in
+# ---------------------------------------------------------------------------
+
+version: "1.0.0"
+updatedAt: "2026-10-29"
+
+rules:
+  # --- 司法与合规 -----------------------------------------------------------
+  - id: R-LIT-001
+    name: 涉诉密集预警
+    severity: major
+    description: 主体近 12 个月涉诉或被强制执行次数达到阈值，可能面临持续经营压力
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-LIT-001
+          operator: gte
+          value: 3
+    message: "{entity} 近12个月涉诉/执行事件 {top_indicator}，综合风险分 {score}（{level}），建议启动专项尽调"
+    evidence:
+      indicators: [IND-LIT-001, IND-ENF-001]
+      show_paths: true
+
+  - id: R-ENF-001
+    name: 强制执行金额异常
+    severity: critical
+    description: 强制执行标的金额相对注册资本的倍数异常
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-ENF-001
+          operator: gte
+          value: 50000
+    message: "{entity} 强制执行金额远超注册资本规模，风险分 {score}（{level}），需立即上报"
+    evidence:
+      indicators: [IND-ENF-001]
+      show_paths: true
+
+  - id: R-PEN-001
+    name: 行政处罚聚集
+    severity: warning
+    description: 近 12 个月行政处罚次数较多，合规风险上升
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-PEN-001
+          operator: gte
+          value: 2
+    message: "{entity} 存在 {top_indicator}，合规状况需关注"
+    evidence:
+      indicators: [IND-PEN-001]
+      show_paths: false
+
+  # --- 财务与担保链 --------------------------------------------------------
+  - id: R-GUA-001
+    name: 对外担保敞口过高
+    severity: major
+    description: 对外担保余额相对注册资本的倍数过高，代偿风险显著
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-GUA-001
+          operator: gte
+          value: 1.0
+    message: "{entity} 对外担保余额达注册资本的 {top_indicator}，存在代偿风险，风险分 {score}（{level}）"
+    evidence:
+      indicators: [IND-GUA-001]
+      show_paths: true
+
+  - id: R-CHAIN-001
+    name: 担保链传导预警
+    severity: critical
+    description: 主体处于多层担保链上，风险沿担保链向两端传导
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-CHN-001
+          operator: gte
+          value: 2
+        - path:
+            relation_types: [GUARANTEE]
+            min_hops: 2
+            min_paths: 1
+    message: "{entity} 处于多层担保链中（{path_count} 条传导路径），最大受影响方：{path_summary}"
+    evidence:
+      indicators: [IND-CHN-001, IND-GUA-001]
+      show_paths: true
+
+  # --- 治理与市场 -----------------------------------------------------------
+  - id: R-HLD-001
+    name: 股权结构分散预警
+    severity: info
+    description: 第一大股东持股比例过低，治理结构分散
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-HLD-001
+          operator: lte
+          value: 0.2
+    message: "{entity} 股权结构分散（{top_indicator}），决策效率与一致性存在风险"
+    evidence:
+      indicators: [IND-HLD-001]
+      show_paths: false
+
+  - id: R-CTL-001
+    name: 实际控制人风险传导
+    severity: warning
+    description: 实际控制人自身风险分较高，会向主体传导
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-CTL-001
+          operator: gte
+          value: 60
+    message: "{entity} 实际控制人风险分较高（{top_indicator}），治理风险向主体传导"
+    evidence:
+      indicators: [IND-CTL-001]
+      show_paths: true
+
+  - id: R-RTE-001
+    name: 评级下调预警
+    severity: major
+    description: 近 12 个月出现信用评级下调
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-RTE-001
+          operator: gte
+          value: 1
+    message: "{entity} 出现评级下调（{top_indicator}），再融资能力可能受损"
+    evidence:
+      indicators: [IND-RTE-001]
+      show_paths: false
+
+  - id: R-NEG-001
+    name: 负面舆情聚集
+    severity: warning
+    description: 近 30 天负面舆情事件集中出现
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-NEG-001
+          operator: gte
+          value: 5
+    message: "{entity} 近期负面舆情集中（{top_indicator}），需关注声誉与流动性风险"
+    evidence:
+      indicators: [IND-NEG-001]
+      show_paths: false
+
+  - id: R-DEF-001
+    name: 违约事件预警
+    severity: critical
+    description: 主体出现违约事件
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - indicator: IND-DEF-001
+          operator: gte
+          value: 1
+    message: "{entity} 发生违约事件（{top_indicator}），风险分 {score}（{level}），需立即处置"
+    evidence:
+      indicators: [IND-DEF-001]
+      show_paths: true
+
+  # --- 综合评分 -------------------------------------------------------------
+  - id: R-SCORE-001
+    name: 综合风险分高企
+    severity: major
+    description: 综合风险分超过预警阈值，无论具体触发哪一项指标都需关注
+    enabled: true
+    scope:
+      entity_types: [company]
+    condition:
+      all:
+        - score:
+            operator: gte
+            value: 60
+    message: "{entity} 综合风险分 {score}（{level}），主要贡献：{top_indicator}"
+    evidence:
+      indicators: []
+      show_paths: true

@@ -1,0 +1,128 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fin-kg-risk-engine"
+version = "0.1.0"
+description = "Enterprise-grade financial knowledge graph risk early-warning and intelligent research platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Nephets1010" }]
+keywords = ["knowledge-graph", "neo4j", "gnn", "risk", "fintech", "kgqa"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pydantic-settings>=2.2,<3",
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "neo4j>=5.17,<6",
+    "redis>=5.0,<6",
+    "numpy>=1.26,<2",
+    "httpx>=0.27,<1",
+    "prometheus-client>=0.20,<1",
+    "python-multipart>=0.0.9",
+    "PyYAML>=6.0,<7",
+    "tenacity>=8.2,<9",
+]
+
+[project.optional-dependencies]
+gnn = ["torch>=2.2,<3", "torch-geometric>=2.5,<3"]
+llm = ["openai>=1.30,<2", "tiktoken>=0.7,<1"]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-cov>=4.1,<6",
+    "pytest-asyncio>=0.23,<1",
+    "httpx>=0.27,<1",
+    "ruff>=0.4,<1",
+    "mypy>=1.9,<2",
+    "types-PyYAML>=6.0",
+]
+all = ["fin-kg-risk-engine[gnn,llm,dev]"]
+
+[project.scripts]
+fin-kg = "fin_kg.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Nephets1010/fin-kg-risk-engine"
+Repository = "https://github.com/Nephets1010/fin-kg-risk-engine"
+Issues = "https://github.com/Nephets1010/fin-kg-risk-engine/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fin_kg = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "unit: pure logic tests, no external service required",
+    "integration: requires a live Neo4j / Redis instance",
+    "slow: long-running tests, excluded from the default CI shard",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:neo4j.*",
+    # Starlette's TestClient warns about httpx2; the warning is not ours.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/fin_kg"]
+branch = true
+omit = ["*/__main__.py", "*/cli.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 70
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "PTH", "T20"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "PLR2004"]
+"src/fin_kg/cli.py" = ["T20"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+exclude = ["tests/", "migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["fin_kg.risk.gnn.*"]
+ignore_missing_imports = true
