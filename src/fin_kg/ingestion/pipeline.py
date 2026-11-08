@@ -23,7 +23,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fin_kg.core.errors import IngestionError
+from fin_kg.core.errors import GraphStoreError, IngestionError
 from fin_kg.core.logging import get_logger
 from fin_kg.domain.entities import GraphNode
 from fin_kg.domain.provenance import ExtractionMethod, Provenance, SourceType, utcnow
@@ -34,6 +34,25 @@ from fin_kg.ingestion.base import RawRecord, RecordKind, SourceAdapter, chunked
 from fin_kg.ingestion.cleaning import Cleaner, dedupe_key
 
 logger = get_logger(__name__)
+
+#: Error fragments that mean "this record is wrong", as opposed to "the
+#: store is broken". A record-level problem can be isolated and skipped; a
+#: storage failure must abort the run so that it stays visible.
+_RECORD_LEVEL_ERROR_FRAGMENTS = (
+    "does not exist",
+    "unknown relation type",
+    "unknown label",
+)
+
+
+def _is_record_level_error(exc: GraphStoreError) -> bool:
+    """Whether the failure is about one record rather than the store."""
+    details = exc.details or {}
+    text = " ".join(
+        str(value) for value in details.values() if isinstance(value, (str, int, float))
+    )
+    haystack = f"{exc} {text}"
+    return any(fragment in haystack for fragment in _RECORD_LEVEL_ERROR_FRAGMENTS)
 
 
 @dataclass(slots=True)
@@ -302,31 +321,21 @@ class IngestionPipeline:
 
     @staticmethod
     def _merge_provenance(node: GraphNode, existing: dict[str, Any]) -> None:
-        """Append the incoming provenance to the one already stored.
+        """Merge the incoming provenance into the one already stored.
 
         The stored provenance is a JSON string (Neo4j cannot hold a list of
         maps), so it is parsed before the merge and re-serialised after.
+        Both sides are de-duplicated by fingerprint: the same fact arriving
+        from two feeds is kept once, while a fact that only exists in the
+        store is preserved.
         """
-        import json
-
-        stored = existing.get("provenance")
-        known: set[str] = set()
-        if isinstance(stored, str) and stored:
-            try:
-                for item in json.loads(stored):
-                    if isinstance(item, dict):
-                        known.add(item.get("provenanceHash", ""))
-            except json.JSONDecodeError:
-                known = set()
-        elif isinstance(stored, list):
-            for item in stored:
-                if isinstance(item, dict):
-                    known.add(item.get("provenanceHash", ""))
-
         merged = list(node.provenance)
+        incoming = {item.fingerprint() for item in merged}
         for item in stored_items(existing):
-            if item.fingerprint() not in known:
+            fingerprint = item.fingerprint()
+            if fingerprint not in incoming:
                 merged.append(item)
+                incoming.add(fingerprint)
         node.provenance = merged
 
     def _canonical_id(self, source_id: str) -> str:
@@ -403,7 +412,24 @@ class IngestionPipeline:
     def _persist_relations(self, relations: Iterable[Relation]) -> int:
         written = 0
         for chunk in chunked(list(relations), self.batch_size):
-            written += self.repository.upsert_relations(chunk)
+            try:
+                written += self.repository.upsert_relations(chunk)
+            except GraphStoreError as exc:
+                if not _is_record_level_error(exc):
+                    # A storage failure is not a data problem — it must
+                    # surface rather than be swallowed one relation at a time.
+                    raise
+                # One malformed relation must not abort the whole run.
+                # Retry the chunk one relation at a time to isolate the
+                # offending record and skip only that one.
+                logger.warning("relation batch write failed (%s); retrying it one by one", exc)
+                for relation in chunk:
+                    try:
+                        written += self.repository.upsert_relations([relation])
+                    except GraphStoreError as single_exc:
+                        if not _is_record_level_error(single_exc):
+                            raise
+                        logger.warning("relation skipped: %s", single_exc)
             self._notify("relations", written)
         return written
 

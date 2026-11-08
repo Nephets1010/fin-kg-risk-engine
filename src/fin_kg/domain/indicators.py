@@ -113,7 +113,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
             "WHERE e.eventType IN ['litigation','enforcement'] "
-            "AND e.occurredDate >= date($since) RETURN count(e) AS value"
+            "AND date(e.occurredDate) >= date($since) RETURN count(e) AS value"
         ),
         thresholds=((0, 0.0), (1, 25.0), (3, 55.0), (10, 85.0), (30, 100.0)),
     ),
@@ -131,7 +131,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         ),
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
-            "WHERE e.eventType='enforcement' AND e.occurredDate >= date($since) "
+            "WHERE e.eventType='enforcement' AND date(e.occurredDate) >= date($since) "
             "WITH c, coalesce(sum(e.amount),0) AS exposure "
             "RETURN CASE WHEN c.regCapital > 0 "
             "THEN exposure / c.regCapital ELSE 0 END AS value"
@@ -149,7 +149,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         description="近 12 个月行政处罚事件数量",
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
-            "WHERE e.eventType='penalty' AND e.occurredDate >= date($since) "
+            "WHERE e.eventType='penalty' AND date(e.occurredDate) >= date($since) "
             "RETURN count(e) AS value"
         ),
         thresholds=((0, 0.0), (1, 35.0), (3, 70.0), (6, 100.0)),
@@ -197,9 +197,13 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         weight=0.10,
         unit="比率",
         description="第一大股东持股比例，过于分散同样构成治理风险",
+        # No shareholder at all is *missing data*, not "extremely dispersed".
+        # For a LOWER_IS_RISKIER indicator a zero stake means the maximum
+        # risk, so coalescing to zero would score a company whose
+        # shareholder data is simply absent as highly risky. The query
+        # therefore returns null (or no row) when there is no holder.
         measurement_cypher=(
-            "MATCH (c:Company {id:$id})<-[h:HOLD]-(s:Company) "
-            "RETURN coalesce(max(h.percent),0) AS value"
+            "MATCH (c:Company {id:$id})<-[h:HOLD]-(s:Company) RETURN max(h.percent) AS value"
         ),
         thresholds=((0.0, 60.0), (0.1, 40.0), (0.2, 20.0), (0.35, 5.0)),
     ),
@@ -229,7 +233,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         description="近 12 个月主体信用评级下调次数",
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
-            "WHERE e.eventType='rating_downgrade' AND e.occurredDate >= date($since) "
+            "WHERE e.eventType='rating_downgrade' AND date(e.occurredDate) >= date($since) "
             "RETURN count(e) AS value"
         ),
         thresholds=((0, 0.0), (1, 50.0), (2, 80.0), (4, 100.0)),
@@ -245,7 +249,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         description="近 30 天负面舆情事件数量",
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
-            "WHERE e.eventType='negative_news' AND e.occurredDate >= date($since) "
+            "WHERE e.eventType='negative_news' AND date(e.occurredDate) >= date($since) "
             "RETURN count(e) AS value"
         ),
         thresholds=((0, 0.0), (3, 40.0), (10, 70.0), (25, 100.0)),
@@ -261,7 +265,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         description="近 12 个月违约事件数量",
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
-            "WHERE e.eventType='default' AND e.occurredDate >= date($since) "
+            "WHERE e.eventType='default' AND date(e.occurredDate) >= date($since) "
             "RETURN count(e) AS value"
         ),
         thresholds=((0, 0.0), (1, 70.0), (2, 90.0), (4, 100.0)),

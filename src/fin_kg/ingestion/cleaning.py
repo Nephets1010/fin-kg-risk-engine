@@ -143,9 +143,14 @@ def parse_percent(value: Any) -> float | None:
 def parse_amount(value: Any, *, unit: str = "万元") -> float | None:
     """Parse a monetary amount into a float.
 
-    Chinese unit suffixes are understood: ``万`` → ×10 000, ``亿`` → ×10^8.
+    Chinese unit suffixes are understood: ``万`` → ÷10 000, ``亿`` → ×10 000.
     A bare number is taken to be in the platform's canonical unit, which is
     **万元** (ten thousand yuan) — the unit the Chinese registry uses.
+
+    Thousands separators are stripped before parsing. Without this step a
+    value such as ``5,000万元`` would parse as ``5`` — a factor of a
+    thousand too small — and the ratio indicators built on top of it would
+    be silently wrong.
 
     ``unit`` documents the canonical unit of the caller; it exists so that
     the contract is visible at the call site rather than buried in a
@@ -159,6 +164,10 @@ def parse_amount(value: Any, *, unit: str = "万元") -> float | None:
     text = str(value).strip()
     if not text:
         return None
+    # Drop the thousands separators so that "5,000" parses as 5000.
+    # The lookahead requires exactly three digits followed by a non-digit, so
+    # that a malformed group such as "1,2345" is not silently accepted.
+    text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)
     numeric = _NUMBER_RE.search(text)
     if not numeric:
         return None
