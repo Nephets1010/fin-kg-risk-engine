@@ -82,11 +82,7 @@ class SimilarCaseFinder:
 
     def feature_vector(self, entity_id: str, score: RiskScore | None = None) -> np.ndarray:
         """Build the comparison vector of one entity."""
-        snapshot = getattr(self.repository, "snapshot", None)
-        if snapshot is None:
-            return np.zeros(len(SIMILARITY_DIMENSIONS), dtype=np.float64)
-
-        edges = snapshot.adjacency.get(entity_id, [])
+        edges = self.repository.neighbours(entity_id)
         guarantee_exposure = sum(
             float(edge.get("guaranteed_amount") or 0.0)
             for edge in edges
@@ -108,7 +104,7 @@ class SimilarCaseFinder:
         risk_value = (
             score.score
             if score is not None
-            else float((snapshot.nodes.get(entity_id, {}) or {}).get("riskScore") or 0.0)
+            else float((self.repository.get_node(entity_id) or {}).get("riskScore") or 0.0)
         )
         return np.array(
             [
@@ -130,10 +126,6 @@ class SimilarCaseFinder:
         exclude_related: bool = False,
     ) -> list[SimilarCase]:
         """Return the most similar companies to ``entity_id``."""
-        snapshot = getattr(self.repository, "snapshot", None)
-        if snapshot is None:
-            return []
-
         node = self.repository.get_node(entity_id)
         if node is None:
             return []
@@ -144,16 +136,14 @@ class SimilarCaseFinder:
             # Only the directly connected parties are dropped: a comparable
             # case that is itself part of the subject's guarantee chain is
             # not an independent reference point.
-            for edge in snapshot.adjacency.get(entity_id, []):
+            for edge in self.repository.neighbours(entity_id):
                 related_ids.add(str(edge.get("source")))
                 related_ids.add(str(edge.get("target")))
 
         results: list[SimilarCase] = []
-        for candidate_id in snapshot.nodes:
-            if candidate_id in related_ids:
-                continue
-            labels = snapshot.node_labels.get(candidate_id, set())
-            if "Company" not in labels:
+        for candidate in self.repository.find_nodes("Company"):
+            candidate_id = str(candidate.get("id", ""))
+            if not candidate_id or candidate_id in related_ids:
                 continue
             candidate_vector = self.feature_vector(candidate_id)
             similarity = cosine_similarity(reference, candidate_vector)
@@ -167,7 +157,7 @@ class SimilarCaseFinder:
                 )
                 for index, name in enumerate(SIMILARITY_DIMENSIONS)
             }
-            candidate_node = snapshot.nodes.get(candidate_id, {})
+            candidate_node = candidate
             results.append(
                 SimilarCase(
                     entity_id=candidate_id,

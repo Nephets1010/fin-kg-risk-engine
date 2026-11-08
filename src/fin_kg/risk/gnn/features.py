@@ -119,50 +119,45 @@ class FeatureExtractor:
         node_ids = self._collect(seed_ids, max_hops=max_hops, max_nodes=max_nodes)
         index_of = {node_id: index for index, node_id in enumerate(node_ids)}
 
-        snapshot = getattr(self.repository, "snapshot", None)
         features = np.zeros((len(node_ids), len(FEATURE_NAMES)), dtype=np.float32)
         edges: list[tuple[int, int]] = []
         weights: list[float] = []
 
-        if snapshot is not None:
-            for node_id in node_ids:
-                incident = snapshot.adjacency.get(node_id, [])
-                in_degree = 0
-                out_degree = 0
-                guarantee_out = 0
-                hold_out = 0
-                transmissibilities: list[float] = []
-                for edge in incident:
-                    if edge["source"] == node_id:
-                        out_degree += 1
-                        if edge.get("relationType") == "GUARANTEE":
-                            guarantee_out += 1
-                        if edge.get("relationType") == "HOLD":
-                            hold_out += 1
-                    else:
-                        in_degree += 1
-                    transmissibilities.append(float(edge.get("transmissibility") or 0.0))
-                    other = edge["target"] if edge["source"] == node_id else edge["source"]
-                    if other in index_of:
-                        edges.append((index_of[node_id], index_of[other]))
-                        weights.append(float(edge.get("transmissibility") or 0.0))
+        for node_id in node_ids:
+            incident = self.repository.neighbours(node_id)
+            in_degree = 0
+            out_degree = 0
+            guarantee_out = 0
+            hold_out = 0
+            transmissibilities: list[float] = []
+            for edge in incident:
+                if edge["source"] == node_id:
+                    out_degree += 1
+                    if edge.get("relationType") == "GUARANTEE":
+                        guarantee_out += 1
+                    if edge.get("relationType") == "HOLD":
+                        hold_out += 1
+                else:
+                    in_degree += 1
+                transmissibilities.append(float(edge.get("transmissibility") or 0.0))
+                other = edge["target"] if edge["source"] == node_id else edge["source"]
+                if other in index_of:
+                    edges.append((index_of[node_id], index_of[other]))
+                    weights.append(float(edge.get("transmissibility") or 0.0))
 
-                node = snapshot.nodes.get(node_id, {})
-                total = in_degree + out_degree
-                features[index_of[node_id]] = (
-                    in_degree,
-                    out_degree,
-                    total,
-                    float(np.log1p(total)),
-                    float(np.mean(transmissibilities)) if transmissibilities else 0.0,
-                    float(np.max(transmissibilities)) if transmissibilities else 0.0,
-                    guarantee_out,
-                    hold_out,
-                    float(node.get("riskScore") or 0.0),
-                )
-        else:
-            for node_id in node_ids:
-                features[index_of[node_id]] = 0.0
+            node = self.repository.get_node(node_id) or {}
+            total = in_degree + out_degree
+            features[index_of[node_id]] = (
+                in_degree,
+                out_degree,
+                total,
+                float(np.log1p(total)),
+                float(np.mean(transmissibilities)) if transmissibilities else 0.0,
+                float(np.max(transmissibilities)) if transmissibilities else 0.0,
+                guarantee_out,
+                hold_out,
+                float(node.get("riskScore") or 0.0),
+            )
 
         edge_index = (
             np.array(edges, dtype=np.int64).T if edges else np.zeros((2, 0), dtype=np.int64)
