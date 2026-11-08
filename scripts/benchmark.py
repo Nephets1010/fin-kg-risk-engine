@@ -78,9 +78,7 @@ def _time_call(function: Any, *args: Any, **kwargs: Any) -> float:
     return (time.perf_counter() - started) * 1000
 
 
-def run_benchmark(
-    *, companies: int, hops: int, samples: int, rules_path: Path
-) -> dict[str, Any]:
+def run_benchmark(*, companies: int, hops: int, samples: int, rules_path: Path) -> dict[str, Any]:
     """Run the benchmark and return the report."""
     repository = InMemoryGraphRepository()
     repository.ensure_schema()

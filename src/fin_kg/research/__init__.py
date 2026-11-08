@@ -1,6 +1,6 @@
 """Research layer: KGQA, similar-case retrieval, report generation, LLM client."""
 
-from fin_kg.research.kgqa import Answer, Evidence, KGQA
+from fin_kg.research.kgqa import KGQA, Answer, Evidence
 from fin_kg.research.llm import LLMClient, build_client
 from fin_kg.research.planner import (
     QueryIntent,
@@ -18,10 +18,10 @@ from fin_kg.research.similarity import (
 )
 
 __all__ = [
+    "KGQA",
     "SIMILARITY_DIMENSIONS",
     "Answer",
     "Evidence",
-    "KGQA",
     "LLMClient",
     "QueryIntent",
     "QueryPlan",

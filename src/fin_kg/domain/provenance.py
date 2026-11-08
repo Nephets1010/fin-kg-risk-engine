@@ -30,14 +30,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class SourceType(str, Enum):
     """The kind of system a fact originated from."""
 
-    REGISTRY = "registry"          # 工商登记
-    FILING = "filing"              # 公告 / 定期报告
-    COURT = "court"                # 司法文书
-    NEWS = "news"                  # 新闻舆情
-    MARKET = "market"              # 行情与交易数据
-    MANUAL = "manual"              # 人工录入
-    SYNTHETIC = "synthetic"        # 合成/扩样数据
-    DERIVED = "derived"            # 由平台计算派生
+    REGISTRY = "registry"  # 工商登记
+    FILING = "filing"  # 公告 / 定期报告
+    COURT = "court"  # 司法文书
+    NEWS = "news"  # 新闻舆情
+    MARKET = "market"  # 行情与交易数据
+    MANUAL = "manual"  # 人工录入
+    SYNTHETIC = "synthetic"  # 合成/扩样数据
+    DERIVED = "derived"  # 由平台计算派生
     UNKNOWN = "unknown"
 
 
@@ -86,7 +86,7 @@ class Provenance(BaseModel):
         return value
 
     @classmethod
-    def synthetic(cls, *, source_id: str = "synthetic:generator", **kwargs: Any) -> "Provenance":
+    def synthetic(cls, *, source_id: str = "synthetic:generator", **kwargs: Any) -> Provenance:
         """Build a provenance record for generated sample data."""
         defaults: dict[str, Any] = {
             "source_type": SourceType.SYNTHETIC,
@@ -100,7 +100,7 @@ class Provenance(BaseModel):
         return cls(**defaults)
 
     @classmethod
-    def derived(cls, *, source_id: str, record_id: str, **kwargs: Any) -> "Provenance":
+    def derived(cls, *, source_id: str, record_id: str, **kwargs: Any) -> Provenance:
         """Build a provenance record for a computed fact."""
         defaults: dict[str, Any] = {
             "source_type": SourceType.DERIVED,

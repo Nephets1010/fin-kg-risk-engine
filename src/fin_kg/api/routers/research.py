@@ -37,7 +37,7 @@ def ask(question: dict, kgqa: KGQADep) -> AnswerResponse:
     """
     try:
         answer = kgqa.ask(str(question.get("question", "")))
-    except Exception as exc:  # noqa: BLE001 - mapped to a 422 by the handler
+    except Exception as exc:  # mapped to a 422 by the handler
         raise HTTPException(
             status_code=422,
             detail={"code": "validation_error", "message": str(exc)},
@@ -79,9 +79,7 @@ def similar_cases(
     from fin_kg.api.deps import get_repository
 
     finder = SimilarCaseFinder(get_repository())
-    cases = finder.find(
-        entity_id, top_k=top_k, min_similarity=min_similarity
-    )
+    cases = finder.find(entity_id, top_k=top_k, min_similarity=min_similarity)
     return [
         SimilarCaseResponse(
             entityId=case.entity_id,

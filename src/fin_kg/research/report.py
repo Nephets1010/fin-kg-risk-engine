@@ -133,9 +133,10 @@ class ReportGenerator:
             title="主体概况",
             content=f"{node.get('name', '未知主体')} 的工商登记与基础信息。",
             bullets=bullets,
-            data={key: node.get(key) for key in (
-                "name", "industry", "status", "regCapital", "foundedDate", "region"
-            )},
+            data={
+                key: node.get(key)
+                for key in ("name", "industry", "status", "regCapital", "foundedDate", "region")
+            },
         )
 
     def _ownership_section(self, entity_id: str, node: dict[str, Any]) -> ReportSection:
@@ -221,7 +222,7 @@ class ReportGenerator:
     def _comparables_section(self, entity_id: str) -> ReportSection:
         try:
             cases = self.similar_cases.find(entity_id, top_k=5)
-        except Exception as exc:  # noqa: BLE001 - comparables are optional
+        except Exception as exc:  # comparables are optional
             logger.warning("similar case lookup failed for %s: %s", entity_id, exc)
             cases = []
         bullets = [
@@ -236,15 +237,11 @@ class ReportGenerator:
             data={"caseCount": len(cases)},
         )
 
-    def _takeaway_section(
-        self, score: RiskScore, assessment: RiskAssessment
-    ) -> ReportSection:
+    def _takeaway_section(self, score: RiskScore, assessment: RiskAssessment) -> ReportSection:
         """The analyst-facing conclusion, derived from the data."""
         points: list[str] = []
         if score.level.value in {"high", "critical"}:
-            points.append(
-                f"主体风险等级为 {score.level.value}，需在授信与投后环节重点核查。"
-            )
+            points.append(f"主体风险等级为 {score.level.value}，需在授信与投后环节重点核查。")
         else:
             points.append(f"主体风险等级为 {score.level.value}，暂未触发高等级预警。")
 

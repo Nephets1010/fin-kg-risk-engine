@@ -58,12 +58,9 @@ class RiskScorer:
         """Compute the weighted sum, total weight and data coverage."""
         weighted = sum(reading.contribution for reading in readings)
         weight_total = sum(reading.weight for reading in readings)
-        missing = tuple(
-            reading.indicator_id for reading in readings if reading.measurement is None
-        )
+        missing = tuple(reading.indicator_id for reading in readings if reading.measurement is None)
         coverage = (
-            sum(1 for reading in readings if reading.measurement is not None)
-            / len(readings)
+            sum(1 for reading in readings if reading.measurement is not None) / len(readings)
             if readings
             else 0.0
         )

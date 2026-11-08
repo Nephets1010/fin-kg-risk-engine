@@ -12,10 +12,11 @@ matter of implementing :meth:`SourceAdapter.fetch` and registering it in
 from __future__ import annotations
 
 import abc
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Iterable
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 

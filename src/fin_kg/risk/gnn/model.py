@@ -47,9 +47,7 @@ def _sigmoid(values: np.ndarray) -> np.ndarray:
     return out
 
 
-def _aggregate_mean(
-    features: np.ndarray, edge_index: np.ndarray, num_nodes: int
-) -> np.ndarray:
+def _aggregate_mean(features: np.ndarray, edge_index: np.ndarray, num_nodes: int) -> np.ndarray:
     """Mean-aggregate neighbour features into every node."""
     aggregated = np.zeros_like(features, dtype=np.float64)
     counts = np.zeros(num_nodes, dtype=np.float64)
@@ -95,7 +93,9 @@ class NumpySAGE:
         scale = 1.0 / np.sqrt(config.in_dim)
         self.w_self = rng.normal(0, scale, size=(config.in_dim, config.hidden_dim))
         self.w_neigh = rng.normal(0, scale, size=(config.in_dim, config.hidden_dim))
-        self.w_out = rng.normal(0, 1.0 / np.sqrt(config.hidden_dim), size=(config.hidden_dim, config.out_dim))
+        self.w_out = rng.normal(
+            0, 1.0 / np.sqrt(config.hidden_dim), size=(config.hidden_dim, config.out_dim)
+        )
         self.b_hidden = np.zeros((config.hidden_dim,))
         self.b_out = np.zeros((config.out_dim,))
         self.trained = False
@@ -103,7 +103,9 @@ class NumpySAGE:
 
     # -- forward ------------------------------------------------------------
 
-    def forward(self, features: np.ndarray, edge_index: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
+    def forward(
+        self, features: np.ndarray, edge_index: np.ndarray
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         """Compute the forward pass and cache the intermediates."""
         num_nodes = features.shape[0]
         aggregated = _aggregate_mean(features, edge_index, num_nodes)
@@ -154,7 +156,7 @@ class NumpySAGE:
         sample_weights = np.where(labels > 0.5, positive_weight, 1.0)
 
         self.history = []
-        for epoch in range(self.config.epochs):
+        for _epoch in range(self.config.epochs):
             logits, cache = self.forward(features, edge_index)
             predictions = _sigmoid(logits)
             error = (predictions - labels) * sample_weights
@@ -188,7 +190,9 @@ class NumpySAGE:
 
             if val_mask is not None and val_mask.any():
                 predictions = _sigmoid(logits).reshape(-1)
-                metric = float(np.mean((predictions[val_mask] >= 0.5) == (labels.reshape(-1)[val_mask] >= 0.5)))
+                metric = float(
+                    np.mean((predictions[val_mask] >= 0.5) == (labels.reshape(-1)[val_mask] >= 0.5))
+                )
             else:
                 metric = float(
                     np.mean((_sigmoid(logits).reshape(-1) >= 0.5) == (labels.reshape(-1) >= 0.5))
@@ -223,12 +227,10 @@ class NumpySAGE:
             "bOut": self.b_out.tolist(),
             "trained": self.trained,
         }
-        Path(path).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @classmethod
-    def load(cls, path: Path) -> "NumpySAGE":
+    def load(cls, path: Path) -> NumpySAGE:
         """Load weights saved by :meth:`save`."""
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
         config = GraphSAGEConfig(

@@ -204,9 +204,9 @@ class TestRelations:
             relation_type=RelationType.GUARANTEE,
             properties={"guaranteed_amount": 100},
         )
-        assert relation.transmissibility == RELATION_SCHEMA[RelationType.GUARANTEE][
-            "transmissibility"
-        ]
+        assert (
+            relation.transmissibility == RELATION_SCHEMA[RelationType.GUARANTEE]["transmissibility"]
+        )
 
     def test_transmissibility_can_be_overridden(self) -> None:
         relation = Relation(

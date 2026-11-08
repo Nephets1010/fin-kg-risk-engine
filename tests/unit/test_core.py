@@ -45,9 +45,7 @@ class TestSettings:
             Settings(env="production", neo4j={"password": ""})
 
     def test_production_accepts_a_password(self) -> None:
-        settings = Settings(
-            env="production", neo4j={"password": "s3cret-value"}, api_key="k"
-        )
+        settings = Settings(env="production", neo4j={"password": "s3cret-value"}, api_key="k")
         assert settings.neo4j.password.get_secret_value() == "s3cret-value"
 
     def test_llm_enabled_requires_api_key_in_production(self) -> None:
@@ -97,8 +95,13 @@ class TestLogging:
         import logging
 
         record = logging.LogRecord(
-            name="fin_kg.test", level=logging.INFO, pathname=__file__, lineno=1,
-            msg="hello", args=(), exc_info=None,
+            name="fin_kg.test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         payload = json.loads(JsonFormatter().format(record))
         assert payload["message"] == "hello"

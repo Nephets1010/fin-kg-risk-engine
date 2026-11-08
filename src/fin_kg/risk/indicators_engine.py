@@ -46,7 +46,7 @@ class IndicatorEngine(abc.ABC):
         for spec in RISK_INDICATORS:
             try:
                 measurement = self.measure(spec, entity_id, since=since)
-            except Exception as exc:  # noqa: BLE001 - a broken indicator must not kill the run
+            except Exception as exc:  # a broken indicator must not kill the run
                 logger.warning(
                     "indicator %s failed for %s: %s", spec.id, entity_id, exc, exc_info=True
                 )
@@ -108,9 +108,13 @@ class LocalIndicatorEngine(IndicatorEngine):
         if snapshot is None:
             return None
 
-        if spec.id.startswith("IND-LIT") or spec.id.startswith("IND-PEN") or spec.id.startswith(
-            "IND-RTE"
-        ) or spec.id.startswith("IND-NEG") or spec.id.startswith("IND-DEF"):
+        if (
+            spec.id.startswith("IND-LIT")
+            or spec.id.startswith("IND-PEN")
+            or spec.id.startswith("IND-RTE")
+            or spec.id.startswith("IND-NEG")
+            or spec.id.startswith("IND-DEF")
+        ):
             return self._count_events(snapshot, spec, entity_id, since)
         if spec.id == "IND-ENF-001":
             exposure = self._sum_event_amounts(snapshot, entity_id, since, "enforcement")

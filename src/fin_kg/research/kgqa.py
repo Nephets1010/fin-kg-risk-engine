@@ -195,21 +195,22 @@ class KGQA:
                 for edge in holders
             ],
         }
+        holder_ids = [str(edge.get("source", "")) for edge in holders]
         evidence = [
             Evidence(
                 kind="relation",
                 description="股权持有关系",
-                node_ids=[str(edge.get("source", "")) for edge in holders]
-                + [str(node.get("id", ""))],
+                node_ids=[*holder_ids, str(node.get("id", ""))],
                 relation_types=["HOLD"] * len(holders),
-                properties={"percent": edge.get("percent") for edge in holders},
+                properties={
+                    holder_id: edge.get("percent")
+                    for holder_id, edge in zip(holder_ids, holders, strict=True)
+                },
             )
         ]
         return facts, evidence
 
-    def _handle_guarantee_chain(
-        self, plan: QueryPlan
-    ) -> tuple[dict[str, Any], list[Evidence]]:
+    def _handle_guarantee_chain(self, plan: QueryPlan) -> tuple[dict[str, Any], list[Evidence]]:
         node = self._resolve_entity(plan)
         paths = self.repository.traverse(
             str(node.get("id", "")),
@@ -222,9 +223,7 @@ class KGQA:
         for path in paths:
             chains.append(
                 {
-                    "path": " -> ".join(
-                        str(item.get("name", "")) for item in path.nodes
-                    ),
+                    "path": " -> ".join(str(item.get("name", "")) for item in path.nodes),
                     "hops": path.length,
                     "amounts": [rel.get("guaranteed_amount") for rel in path.relations],
                 }
@@ -435,14 +434,12 @@ class KGQA:
 
     # -- rendering ----------------------------------------------------------
 
-    def _render(
-        self, plan: QueryPlan, facts: dict[str, Any], evidence: list[Evidence]
-    ) -> str:
+    def _render(self, plan: QueryPlan, facts: dict[str, Any], evidence: list[Evidence]) -> str:
         """Compose the Chinese answer text."""
         if self.llm is not None:
             try:
                 return self._render_with_llm(plan, facts, evidence)
-            except Exception as exc:  # noqa: BLE001 - never fail because of the LLM
+            except Exception as exc:  # never fail because of the LLM
                 logger.warning("LLM rendering failed, falling back to template: %s", exc)
         return self._render_with_template(plan, facts, evidence)
 
@@ -494,7 +491,9 @@ class KGQA:
             if not related:
                 return f"{facts.get('company')} 未发现关联企业。"
             lines = [f"{item['name']}（{item['relation']}）" for item in related[:8]]
-            return f"{facts.get('company')} 共有 {len(related)} 个关联主体：" + "；".join(lines) + "。"
+            return (
+                f"{facts.get('company')} 共有 {len(related)} 个关联主体：" + "；".join(lines) + "。"
+            )
         if intent is QueryIntent.TOP_RISKED:
             items = facts.get("companies") or []
             if not items:
@@ -514,7 +513,9 @@ class KGQA:
                 + "；".join(lines)
                 + "。"
             )
-        return "暂未识别该问题类型，可尝试：股权结构 / 担保链 / 风险分 / 事件 / 关联企业 / 风险排名。"
+        return (
+            "暂未识别该问题类型，可尝试：股权结构 / 担保链 / 风险分 / 事件 / 关联企业 / 风险排名。"
+        )
 
     def _render_with_llm(
         self, plan: QueryPlan, facts: dict[str, Any], evidence: list[Evidence]
@@ -527,9 +528,7 @@ class KGQA:
         from fin_kg.research.llm import LLMClient
 
         client: LLMClient = self.llm
-        evidence_text = "\n".join(
-            f"- {item.kind}: {item.description}" for item in evidence[:10]
-        )
+        evidence_text = "\n".join(f"- {item.kind}: {item.description}" for item in evidence[:10])
         prompt = (
             "你是金融风控分析师助手。请仅依据下面的图谱事实，用简体中文回答问题。"
             "不要编造事实，不要给出图谱中没有的数字。\n\n"
@@ -540,4 +539,4 @@ class KGQA:
         return client.complete(prompt)
 
 
-__all__ = ["Answer", "Evidence", "KGQA"]
+__all__ = ["KGQA", "Answer", "Evidence"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from fin_kg.core.errors import NotFoundError, ValidationError
 from fin_kg.research.kgqa import KGQA
 from fin_kg.research.planner import (
     QueryIntent,
@@ -46,7 +47,7 @@ class TestQueryPlanner:
         assert plan.limit == 25
 
     def test_empty_question_is_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             QueryPlanner().plan("   ")
 
     def test_plan_is_serialisable(self) -> None:
@@ -72,7 +73,7 @@ class TestKGQA:
 
     def test_unknown_entity_raises(self, seeded_repository) -> None:
         qa = KGQA(seeded_repository)
-        with pytest.raises(Exception):
+        with pytest.raises(NotFoundError):
             qa.ask("不存在于此图谱中的公司风险分是多少？")
 
     def test_answer_is_serialisable(self, seeded_repository) -> None:
@@ -150,7 +151,9 @@ class TestReportGenerator:
         scores = risk_service.rank(limit=1)
         if not scores:
             pytest.skip("no scored entities")
-        payload = ReportGenerator(seeded_repository).generate(
-            risk_service.assess(scores[0].entity_id)
-        ).as_dict()
+        payload = (
+            ReportGenerator(seeded_repository)
+            .generate(risk_service.assess(scores[0].entity_id))
+            .as_dict()
+        )
         assert payload["sections"]

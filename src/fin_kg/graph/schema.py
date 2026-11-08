@@ -40,16 +40,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=1,
         description="节点唯一约束与标签",
         statements=(
-            "CREATE CONSTRAINT company_id IF NOT EXISTS "
-            "FOR (n:Company) REQUIRE n.id IS UNIQUE",
-            "CREATE CONSTRAINT person_id IF NOT EXISTS "
-            "FOR (n:Person) REQUIRE n.id IS UNIQUE",
-            "CREATE CONSTRAINT event_id IF NOT EXISTS "
-            "FOR (n:Event) REQUIRE n.id IS UNIQUE",
-            "CREATE CONSTRAINT product_id IF NOT EXISTS "
-            "FOR (n:Product) REQUIRE n.id IS UNIQUE",
-            "CREATE CONSTRAINT entity_id IF NOT EXISTS "
-            "FOR (n:Entity) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT company_id IF NOT EXISTS FOR (n:Company) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (n:Person) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT event_id IF NOT EXISTS FOR (n:Event) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT product_id IF NOT EXISTS FOR (n:Product) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (n:Entity) REQUIRE n.id IS UNIQUE",
         ),
     ),
     Migration(
@@ -64,10 +59,8 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=3,
         description="范围索引：持股比例与事件日期",
         statements=(
-            "CREATE INDEX hold_percent IF NOT EXISTS FOR (n)-[r:HOLD]->(m) "
-            "ON (r.percent)",
-            "CREATE INDEX event_occurred_date IF NOT EXISTS FOR (n:Event) "
-            "ON (n.occurredDate)",
+            "CREATE INDEX hold_percent IF NOT EXISTS FOR (n)-[r:HOLD]->(m) ON (r.percent)",
+            "CREATE INDEX event_occurred_date IF NOT EXISTS FOR (n:Event) ON (n.occurredDate)",
             "CREATE INDEX event_type IF NOT EXISTS FOR (n:Event) ON (n.eventType)",
             "CREATE INDEX guarantee_amount IF NOT EXISTS FOR (n)-[r:GUARANTEE]->(m) "
             "ON (r.guaranteed_amount)",
@@ -79,8 +72,7 @@ MIGRATIONS: tuple[Migration, ...] = (
         statements=(
             "CREATE INDEX company_name IF NOT EXISTS FOR (n:Company) ON (n.name)",
             "CREATE INDEX person_name IF NOT EXISTS FOR (n:Person) ON (n.name)",
-            "CREATE INDEX company_risk_score IF NOT EXISTS FOR (n:Company) "
-            "ON (n.riskScore)",
+            "CREATE INDEX company_risk_score IF NOT EXISTS FOR (n:Company) ON (n.riskScore)",
             "CREATE INDEX product_name IF NOT EXISTS FOR (n:Product) ON (n.name)",
         ),
     ),
@@ -88,10 +80,8 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=5,
         description="关系类型索引与迁移记录",
         statements=(
-            "CREATE INDEX relation_type IF NOT EXISTS FOR ()-[r]-() "
-            "ON (r.relationType)",
-            "CREATE INDEX entity_created_at IF NOT EXISTS FOR (n:Entity) "
-            "ON (n.createdAt)",
+            "CREATE INDEX relation_type IF NOT EXISTS FOR ()-[r]-() ON (r.relationType)",
+            "CREATE INDEX entity_created_at IF NOT EXISTS FOR (n:Entity) ON (n.createdAt)",
         ),
     ),
 )

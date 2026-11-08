@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from fin_kg.core.errors import ValidationError
 from fin_kg.domain.entities import Company
 from fin_kg.domain.relations import Relation, RelationType
 from fin_kg.domain.risk import IndicatorReading, RiskScore, TransmissionPath
@@ -32,7 +33,7 @@ class TestRiskScorer:
         from fin_kg.risk.indicators_engine import IndicatorEngine
 
         class StubEngine(IndicatorEngine):
-            def measure(self, spec, entity_id, *, since):  # noqa: ANN001, ANN202, ARG002
+            def measure(self, spec, entity_id, *, since):
                 return None
 
         scorer = RiskScorer(StubEngine())
@@ -49,7 +50,7 @@ class TestRiskScorer:
         from fin_kg.risk.indicators_engine import IndicatorEngine
 
         class StubEngine(IndicatorEngine):
-            def measure(self, spec, entity_id, *, since):  # noqa: ANN001, ANN202, ARG002
+            def measure(self, spec, entity_id, *, since):
                 return None
 
         scorer = RiskScorer(StubEngine())
@@ -209,7 +210,7 @@ class TestRuleEngine:
         assert engine.evaluate(RiskScore(entity_id="c1", score=90)) == []
 
     def test_invalid_operator_is_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RuleEngine.from_payload(
                 {
                     "rules": [
@@ -227,7 +228,7 @@ class TestRuleEngine:
             )
 
     def test_rule_without_id_is_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RuleEngine.from_payload(
                 {"rules": [{"name": "x", "severity": "warning", "condition": {"all": []}}]}
             )
@@ -336,9 +337,7 @@ class TestGNN:
     def test_training_reduces_loss(self) -> None:
         rng = np.random.default_rng(1)
         features = rng.normal(size=(40, 4))
-        edge_index = np.array(
-            [[i for i in range(39)], [i + 1 for i in range(39)]], dtype=np.int64
-        )
+        edge_index = np.array([list(range(39)), [i + 1 for i in range(39)]], dtype=np.int64)
         labels = np.array([1.0 if i % 4 == 0 else 0.0 for i in range(40)])
         model = NumpySAGE(GraphSAGEConfig(in_dim=4, hidden_dim=8, epochs=60, learning_rate=0.05))
         report = model.train(features, edge_index, labels)
@@ -386,7 +385,7 @@ class TestGNN:
     def test_label_store_rejects_bad_header(self, tmp_path) -> None:
         path = tmp_path / "labels.csv"
         path.write_text("id,label\nc1,1\n", encoding="utf-8")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             LabelStore.from_csv(path)
 
     def test_precision_recall_f1_perfect_prediction(self) -> None:

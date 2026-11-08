@@ -22,7 +22,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from fin_kg import __version__
 from fin_kg.core.logging import configure_logging, get_logger
@@ -117,16 +118,14 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_seed(args: argparse.Namespace) -> int:
     """Load the synthetic dataset into the graph."""
-    from fin_kg.ingestion.sources import SyntheticSourceAdapter
     from fin_kg.ingestion.pipeline import IngestionPipeline
+    from fin_kg.ingestion.sources import SyntheticSourceAdapter
 
     settings = _settings()
     adapter = SyntheticSourceAdapter(
         companies=args.companies, events_per_company=args.events, seed=args.seed
     )
-    pipeline = IngestionPipeline(
-        _repository(), batch_size=settings.ingestion.batch_size
-    )
+    pipeline = IngestionPipeline(_repository(), batch_size=settings.ingestion.batch_size)
     report = pipeline.run([adapter])
     print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
     return 0
@@ -270,7 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130
-    except Exception as exc:  # noqa: BLE001 - the CLI reports errors as exit codes
+    except Exception as exc:  # the CLI reports errors as exit codes
         print(f"error: {exc}", file=sys.stderr)
         logger.exception("command %s failed", args.command)
         return 1

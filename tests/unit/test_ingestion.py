@@ -6,6 +6,7 @@ from datetime import date
 
 import pytest
 
+from fin_kg.core.errors import ValidationError
 from fin_kg.domain.relations import RelationType
 from fin_kg.graph.alignment import EntityResolver, deterministic_id, normalize_name
 from fin_kg.ingestion.base import RawRecord, RecordKind
@@ -107,9 +108,7 @@ class TestEntityResolver:
 
     def test_credit_code_wins(self) -> None:
         resolver = EntityResolver()
-        company, resolution = resolver.make_company(
-            name="甲公司", credit_code="91110000MA01ABCDEF"
-        )
+        company, resolution = resolver.make_company(name="甲公司", credit_code="91110000MA01ABCDEF")
         assert resolution.matched_on == "new"
         assert company.credit_code == "91110000MA01ABCDEF"
 
@@ -175,7 +174,7 @@ class TestCleaner:
             record_id="r",
             payload={},
         )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             cleaner.clean_company(record)
 
     def test_cleaning_coerces_types(self) -> None:
@@ -220,11 +219,9 @@ class TestCleaner:
 
     def test_stats_track_rejections(self) -> None:
         cleaner = Cleaner()
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             cleaner.clean(
-                RawRecord(
-                    kind=RecordKind.COMPANY, source_id="s", record_id="r", payload={}
-                )
+                RawRecord(kind=RecordKind.COMPANY, source_id="s", record_id="r", payload={})
             )
         assert cleaner.stats.rejected == 1
 
@@ -255,24 +252,16 @@ class TestSources:
 
     def test_synthetic_source_marks_provenance(self) -> None:
         result = SyntheticSourceAdapter(companies=3).fetch()
-        assert all(
-            record.source_type.value == "synthetic" for record in result.records
-        )
+        assert all(record.source_type.value == "synthetic" for record in result.records)
 
     def test_synthetic_source_produces_relations(self) -> None:
         result = SyntheticSourceAdapter(companies=10).fetch()
-        relations = [
-            record
-            for record in result.records
-            if record.kind is RecordKind.RELATION
-        ]
+        relations = [record for record in result.records if record.kind is RecordKind.RELATION]
         assert relations
 
     def test_csv_source_reads_sample_files(self, tmp_path) -> None:
         path = tmp_path / "companies.csv"
-        path.write_text(
-            "id,name,industry\nC1,示例公司,制造业\n", encoding="utf-8"
-        )
+        path.write_text("id,name,industry\nC1,示例公司,制造业\n", encoding="utf-8")
         adapter = CsvSourceAdapter(tmp_path)
         result = adapter.fetch()
         assert len(result.records) == 1
