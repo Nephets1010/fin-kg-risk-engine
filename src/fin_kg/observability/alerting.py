@@ -145,6 +145,9 @@ class AlertDispatcher:
         webhook = settings.observability.alert_webhook_url
         if webhook:
             channels.append(WebhookChannel(url=webhook))
+        alert_file = getattr(settings.observability, "alert_file_path", "")
+        if alert_file:
+            channels.append(FileChannel(path=Path(alert_file)))
         return cls(channels=channels)
 
     def dispatch(self, alert: RiskAlert) -> dict[str, bool]:

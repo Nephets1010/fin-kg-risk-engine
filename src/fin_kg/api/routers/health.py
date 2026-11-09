@@ -8,7 +8,12 @@ from fastapi import APIRouter, Response
 
 from fin_kg.api.deps import Repository, SettingsDep
 from fin_kg.api.schemas import HealthResponse
-from fin_kg.observability.metrics import render_metrics
+from fin_kg.observability.metrics import (
+    DEPENDENCY_UP,
+    GRAPH_NODES,
+    GRAPH_RELATIONSHIPS,
+    render_metrics,
+)
 
 router = APIRouter(tags=["ops"])
 
@@ -28,14 +33,25 @@ def health(repository: Repository, settings: SettingsDep) -> HealthResponse:
         dependencies["nodeCount"] = str(
             sum(count for key, count in stats.items() if not key.startswith("REL:"))
         )
+        DEPENDENCY_UP.labels(name="graph_store").set(1)
+        # Publish the graph size. Without this the gauges stay at zero and
+        # an operator cannot tell an empty graph from an unwired exporter.
+        for key, count in stats.items():
+            if key.startswith("REL:"):
+                GRAPH_RELATIONSHIPS.labels(type=key.removeprefix("REL:")).set(count)
+            else:
+                GRAPH_NODES.labels(label=key).set(count)
     except Exception as exc:  # reported, not raised
         dependencies["graph_store"] = f"error: {type(exc).__name__}"
+        DEPENDENCY_UP.labels(name="graph_store").set(0)
 
     try:
         repository.get_node("__healthcheck__")
         dependencies["graph_query"] = "ok"
+        DEPENDENCY_UP.labels(name="graph_query").set(1)
     except Exception as exc:
         dependencies["graph_query"] = f"error: {type(exc).__name__}"
+        DEPENDENCY_UP.labels(name="graph_query").set(0)
 
     return HealthResponse(
         status="ok",

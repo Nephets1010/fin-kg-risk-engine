@@ -45,7 +45,7 @@ docker compose exec api fin-kg score --limit 10      # 看风险分
 | API | http://localhost:8000 | |
 | Swagger UI | http://localhost:8000/docs | |
 | ReDoc | http://localhost:8000/redoc | |
-| Prometheus 指标 | http://localhost:9100/metrics | |
+| Prometheus 指标 | http://localhost:8000/metrics | 与 API 同端口 |
 | Neo4j 浏览器 | http://localhost:7474 | 账号见 `.env` |
 | Bolt | bolt://localhost:7687 | |
 
@@ -154,7 +154,7 @@ python scripts/benchmark.py --companies 100000 --hops 3
 scrape_configs:
   - job_name: fin-kg
     static_configs:
-      - targets: ["api:9100"]
+      - targets: ["api:8000"]
 ```
 
 ### 5.2 建议告警

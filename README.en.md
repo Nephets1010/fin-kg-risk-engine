@@ -451,7 +451,9 @@ fin-kg-risk-engine/
 │   ├── adr/             8 architecture decision records
 │   ├── architecture.md  Architecture in depth
 │   ├── api.md           Detailed API documentation
-│   └── deployment.md    Deployment and operations
+│   ├── data-model.md    Knowledge graph data model (an .en.md English version exists)
+│   ├── deployment.md    Deployment and operations
+│   └── technical-debt.md Technical debt ledger
 ├── migrations/          Versioned Cypher migration scripts
 ├── rules/               Risk rules (YAML)
 ├── data/samples/        Sample dataset (synthetic)
@@ -467,7 +469,7 @@ fin-kg-risk-engine/
 
 ```bash
 make install-dev     # install dependencies
-make test            # all tests (211 passing / 6 skipped)
+make test            # all tests (407 passing / 9 skipped)
 make test-unit       # unit tests only
 make coverage        # coverage report
 make lint            # ruff
@@ -478,9 +480,9 @@ The tests are layered, which is a direct benefit of the ADR-0002 layered archite
 
 | Layer | Location | Needs an external service | Count |
 |---|---|---|---|
-| Unit tests | `tests/unit/` | No | 184 |
-| API integration tests | `tests/integration/test_api.py` | No (in-memory graph) | 27 |
-| Neo4j integration tests | `tests/integration/test_neo4j_integration.py` | Yes (auto-skipped) | 6 |
+| Unit tests | `tests/unit/` | No | 376 |
+| API integration tests | `tests/integration/test_api.py` | No (in-memory graph) | 31 |
+| Neo4j integration tests | `tests/integration/test_neo4j_integration.py` | Yes (auto-skipped) | 9 |
 
 Running the Neo4j integration tests locally:
 

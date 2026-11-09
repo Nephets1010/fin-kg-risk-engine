@@ -51,6 +51,21 @@ class Neo4jSettings(BaseSettings):
     batch_size: int = Field(default=5_000, ge=1, le=100_000)
 
 
+class TushareSettings(BaseSettings):
+    """Settings for the optional Tushare market-data adapter.
+
+    The token lives here rather than being read straight from
+    ``os.environ`` so that it is declared, validated and masked like every
+    other credential in the platform. The environment variable name is
+    unchanged, so existing deployments keep working.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="FIN_KG_TUSHARE_", extra="ignore")
+
+    token: SecretStr = SecretStr("")
+    base_url: str = "http://api.tushare.pro"
+
+
 class RedisSettings(BaseSettings):
     """Settings for the event stream and the job queue."""
 
@@ -114,8 +129,15 @@ class ObservabilitySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FIN_KG_", extra="ignore")
 
     metrics_enabled: bool = True
+    #: Reserved for a dedicated metrics listener. The metrics are currently
+    #: served by the API itself at ``/metrics``, on the API port — nothing
+    #: binds this port yet, so setting it has no effect.
     metrics_port: int = Field(default=9100, ge=1, le=65535)
     alert_webhook_url: str = ""
+    #: Where to append the alert audit trail as JSON Lines. Empty means the
+    #: file channel stays off, which is the default: an audit trail nobody
+    #: asked for is just another disk to fill up.
+    alert_file_path: str = ""
 
 
 class SchedulerSettings(BaseSettings):
@@ -152,6 +174,7 @@ class Settings(BaseSettings):
 
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+    tushare: TushareSettings = Field(default_factory=TushareSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)

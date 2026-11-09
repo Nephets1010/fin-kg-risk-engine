@@ -3,9 +3,12 @@
 #
 #   make install    install the package with the dev extras
 #   make test       run the whole test suite
-#   make lint       run ruff and mypy
+#   make lint       run ruff (mypy is `make typecheck`)
 #   make run        start the API locally
 #   make docker     build and start the whole stack
+#
+# The lint and format targets cover src, tests and scripts — the same scope
+# the CI workflow checks, so a local run and a CI run agree.
 # ---------------------------------------------------------------------------
 
 .DEFAULT_GOAL := help
@@ -39,11 +42,11 @@ coverage: ## Run the tests with the coverage report
 	$(PYTHON) -m pytest tests --cov=src/fin_kg --cov-report=term-missing --cov-report=html
 
 lint: ## Run ruff
-	ruff check src tests
+	ruff check src tests scripts
 
 format: ## Format the code with ruff
-	ruff format src tests
-	ruff check --fix src tests
+	ruff format src tests scripts
+	ruff check --fix src tests scripts
 
 typecheck: ## Run mypy
 	mypy src/fin_kg

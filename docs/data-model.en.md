@@ -115,7 +115,7 @@ Classified by `classify_event_type()` using a keyword table.
 | Type | From | To | Required properties | Optional properties | Transmissibility |
 |---|---|---|---|---|---|
 | `HOLD` | Company | Company | `percent` (0~1) | `since` `until` `shareholdingType` | 0.90 |
-| `GUARANTEE` | Company | Company | `guaranteedAmount` | `since` `until` `guaranteeType` | **1.00** |
+| `GUARANTEE` | Company | Company | `guaranteed_amount` | `since` `until` `guaranteeType` | **1.00** |
 | `RELATED` | Company | Company | — | `relationType` `detail` | 0.30 |
 | `CONTROLS` | Company | Company | — | `controlType` | 0.95 |
 | `INVESTS_IN` | Company | Company | — | `amount` `since` `round` | 0.60 |
@@ -225,7 +225,7 @@ See [ADR-0003](adr/ADR-0003-provenance-model.md).
 | UNIQUE | `Company.id` `Person.id` `Event.id` `Product.id` | Per-type node identity |
 | UNIQUE | `Company.creditCode` | **Entity alignment anchor**, preventing one legal entity from having several nodes |
 | RANGE | `HOLD.percent` | Queries such as "who holds more than 30%" |
-| RANGE | `GUARANTEE.guaranteedAmount` | Exposure aggregation |
+| RANGE | `GUARANTEE.guaranteed_amount` | Exposure aggregation |
 | RANGE | `Event.occurredDate` | Indicator window scans |
 | RANGE | `Event.eventType` | Filtering events by type |
 | TEXT | `Company.name` `Person.name` `Product.name` | Name lookup |

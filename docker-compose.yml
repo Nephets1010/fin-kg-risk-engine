@@ -80,7 +80,6 @@ services:
       FIN_KG_REDIS_URL: redis://:${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}@redis:6379/0
     ports:
       - "8000:8000"
-      - "9100:9100"
 
   worker:
     build:
@@ -101,6 +100,10 @@ services:
       FIN_KG_NEO4J_PASSWORD: ${FIN_KG_NEO4J_PASSWORD:-fin-kg-dev-password}
       FIN_KG_REDIS_URL: redis://:${FIN_KG_REDIS_PASSWORD:-fin-kg-dev-redis}@redis:6379/0
     command: ["python", "-m", "fin_kg.worker"]
+    # The worker serves no HTTP, so the image's HTTP health check would
+    # never pass and the container would sit at "unhealthy" forever.
+    healthcheck:
+      disable: true
 
 volumes:
   neo4j-data:

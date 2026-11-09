@@ -41,7 +41,7 @@ rules:
       all:
         - indicator: IND-ENF-001
           operator: gte
-          value: 50000
+          value: 1.0
     message: "{entity} 强制执行金额远超注册资本规模，风险分 {score}（{level}），需立即上报"
     evidence:
       indicators: [IND-ENF-001]

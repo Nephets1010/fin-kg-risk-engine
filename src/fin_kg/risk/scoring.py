@@ -23,6 +23,7 @@ from datetime import date
 from fin_kg.domain.entities import RiskLevel
 from fin_kg.domain.indicators import RISK_INDICATORS
 from fin_kg.domain.risk import IndicatorReading, RiskScore
+from fin_kg.observability.metrics import RISK_SCORES
 from fin_kg.risk.indicators_engine import IndicatorEngine, window_start
 
 
@@ -88,6 +89,7 @@ class RiskScorer:
         else:
             score = breakdown.weighted_sum / breakdown.weight_total
         score = round(max(0.0, min(100.0, score)), 2)
+        RISK_SCORES.labels(model=self.model_version).inc()
         return RiskScore(
             entity_id=entity_id,
             entity_name=entity_name,

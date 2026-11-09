@@ -447,7 +447,9 @@ fin-kg-risk-engine/
 │   ├── adr/             8 篇架构决策记录
 │   ├── architecture.md  架构详解
 │   ├── api.md           API 详细文档
-│   └── deployment.md    部署与运维
+│   ├── data-model.md    知识图谱数据模型（另有 .en.md 英文版）
+│   ├── deployment.md    部署与运维
+│   └── technical-debt.md 技术债台账
 ├── migrations/          版本化的 Cypher 迁移脚本
 ├── rules/               风险规则（YAML）
 ├── data/samples/        示例数据集（合成）
@@ -463,7 +465,7 @@ fin-kg-risk-engine/
 
 ```bash
 make install-dev     # 安装依赖
-make test            # 全部测试（211 通过 / 6 跳过）
+make test            # 全部测试（407 通过 / 9 跳过）
 make test-unit       # 仅单元测试
 make coverage        # 覆盖率报告
 make lint            # ruff
@@ -474,9 +476,9 @@ make typecheck       # mypy
 
 | 层次 | 位置 | 需要外部服务 | 数量 |
 |---|---|---|---|
-| 单元测试 | `tests/unit/` | 否 | 184 |
-| API 集成测试 | `tests/integration/test_api.py` | 否（内存图） | 27 |
-| Neo4j 集成测试 | `tests/integration/test_neo4j_integration.py` | 是（自动 skip） | 6 |
+| 单元测试 | `tests/unit/` | 否 | 376 |
+| API 集成测试 | `tests/integration/test_api.py` | 否（内存图） | 31 |
+| Neo4j 集成测试 | `tests/integration/test_neo4j_integration.py` | 是（自动 skip） | 9 |
 
 本地跑 Neo4j 集成测试：
 

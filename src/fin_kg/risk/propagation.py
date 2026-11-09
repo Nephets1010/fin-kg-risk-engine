@@ -37,6 +37,7 @@ from fin_kg.core.logging import get_logger
 from fin_kg.domain.relations import RelationType
 from fin_kg.domain.risk import RiskScore, TransmissionPath
 from fin_kg.graph.repository import GraphRepository
+from fin_kg.observability.metrics import PROPAGATED
 
 logger = get_logger(__name__)
 
@@ -133,6 +134,7 @@ class RiskPropagator:
             len(affected),
             max_hops,
         )
+        PROPAGATED.inc()
         return PropagationResult(
             source_id=source_score.entity_id,
             paths=propagated,
