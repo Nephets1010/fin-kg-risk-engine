@@ -139,9 +139,22 @@ jobs:
         # package layout that setuptools cannot discover still produces a
         # green build and a container that dies on startup. Importing the
         # entry points is the cheapest proof that the image works.
+        #
+        # The image sets FIN_KG_ENV=production, and the settings layer
+        # refuses to start production without a Neo4j credential. That
+        # refusal is deliberate, so the smoke test overrides the
+        # environment to exercise the import path itself.
         run: |
-          docker run --rm --entrypoint python fin-kg-risk-engine:${{ github.sha }} \
+          docker run --rm --entrypoint python \
+            -e FIN_KG_ENV=development \
+            fin-kg-risk-engine:${{ github.sha }} \
             -c "import fin_kg.api.app, fin_kg.worker, fin_kg.cli; print('imports ok')"
+
+      - name: Smoke test — the console script must be registered
+        run: |
+          docker run --rm --entrypoint fin-kg \
+            -e FIN_KG_ENV=development \
+            fin-kg-risk-engine:${{ github.sha }} --help
 
   security:
     name: Secret scan
