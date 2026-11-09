@@ -201,16 +201,14 @@ def get_report_generator(
 
 def get_source_adapters() -> dict[str, SourceAdapter]:
     """Return the available source adapters, keyed by name."""
-    import os
-
     settings = get_settings()
     adapters: dict[str, SourceAdapter] = {
         "synthetic": SyntheticSourceAdapter(),
         "csv": CsvSourceAdapter(settings.resolve_path(settings.ingestion.data_dir)),
     }
-    token = os.environ.get("FIN_KG_TUSHARE_TOKEN", "")
+    token = settings.tushare.token.get_secret_value()
     if token:
-        adapters["tushare"] = TushareSourceAdapter(token=token)
+        adapters["tushare"] = TushareSourceAdapter(token=token, base_url=settings.tushare.base_url)
     return adapters
 
 

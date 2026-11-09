@@ -115,7 +115,7 @@
 | 类型 | 起点 | 终点 | 必填属性 | 可选属性 | 传导系数 |
 |---|---|---|---|---|---|
 | `HOLD` | Company | Company | `percent` (0~1) | `since` `until` `shareholdingType` | 0.90 |
-| `GUARANTEE` | Company | Company | `guaranteedAmount` | `since` `until` `guaranteeType` | **1.00** |
+| `GUARANTEE` | Company | Company | `guaranteed_amount` | `since` `until` `guaranteeType` | **1.00** |
 | `RELATED` | Company | Company | — | `relationType` `detail` | 0.30 |
 | `CONTROLS` | Company | Company | — | `controlType` | 0.95 |
 | `INVESTS_IN` | Company | Company | — | `amount` `since` `round` | 0.60 |
@@ -223,7 +223,7 @@
 | UNIQUE | `Company.id` `Person.id` `Event.id` `Product.id` | 各类节点身份 |
 | UNIQUE | `Company.creditCode` | **实体对齐锚点**，防止同一法人多节点 |
 | RANGE | `HOLD.percent` | 「谁持股超 30%」类查询 |
-| RANGE | `GUARANTEE.guaranteedAmount` | 敞口聚合 |
+| RANGE | `GUARANTEE.guaranteed_amount` | 敞口聚合 |
 | RANGE | `Event.occurredDate` | 指标窗口扫描 |
 | RANGE | `Event.eventType` | 按类型过滤事件 |
 | TEXT | `Company.name` `Person.name` `Product.name` | 名称检索 |

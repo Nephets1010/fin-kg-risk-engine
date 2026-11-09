@@ -315,8 +315,9 @@ class SyntheticSourceAdapter(SourceAdapter):
 class TushareSourceAdapter(SourceAdapter):
     """Reads company basics from the Tushare open API.
 
-    The adapter is disabled without a token. It uses the token from the
-    environment; the token is never logged and never stored on the instance.
+    The adapter is disabled without a token. The token is held on the
+    instance for the duration of the request and is never logged; the
+    platform's log filter masks it if it ever reaches a log record.
     """
 
     name = "tushare"
@@ -327,6 +328,10 @@ class TushareSourceAdapter(SourceAdapter):
             raise IngestionError("Tushare adapter requires a token")
         self._token = token
         self.base_url = base_url
+
+    def __repr__(self) -> str:
+        """Keep the token out of reprs and tracebacks."""
+        return f"{type(self).__name__}(token=***, base_url={self.base_url!r})"
 
     def fetch(self, *, since: date | None = None, limit: int | None = None) -> FetchResult:
         """Fetch company basics and convert them into raw records."""

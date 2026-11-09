@@ -63,6 +63,21 @@ TAGS_METADATA: list[dict[str, Any]] = [
 ]
 
 
+def _route_template(request: Request) -> str:
+    """The matched route's path template, e.g. ``/api/v1/graph/entities/{id}``.
+
+    An unmatched URL has no template, and its raw path may still carry a
+    scan target such as ``/wp-admin``. A scanner would otherwise create one
+    time series per probed URL, so unmatched requests are collapsed into a
+    single bucket.
+    """
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    if isinstance(template, str) and template:
+        return template
+    return "unmatched"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Configure logging on startup and release resources on shutdown."""
@@ -117,7 +132,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             context_request_id.reset(token)
             duration = time.monotonic() - started
-            path = request.url.path
+            # The label must be the route *template*, not the concrete URL.
+            # A concrete path carries the entity id, so every entity would
+            # create its own time series — at a hundred thousand entities
+            # that is a hundred thousand series, and the scrape becomes
+            # slower than the service it measures.
+            path = _route_template(request)
             HTTP_REQUESTS.labels(method=request.method, path=path, status=str(status_code)).inc()
             HTTP_LATENCY.labels(method=request.method, path=path).observe(duration)
 

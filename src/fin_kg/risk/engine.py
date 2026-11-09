@@ -46,6 +46,7 @@ import yaml
 
 from fin_kg.core.errors import RuleEvaluationError, ValidationError
 from fin_kg.core.logging import get_logger
+from fin_kg.domain.indicators import INDICATOR_BY_ID
 from fin_kg.domain.relations import RelationType
 from fin_kg.domain.risk import (
     AlertSeverity,
@@ -55,6 +56,7 @@ from fin_kg.domain.risk import (
     RiskScore,
     TransmissionPath,
 )
+from fin_kg.observability.metrics import ALERTS
 
 logger = get_logger(__name__)
 
@@ -282,9 +284,17 @@ class RuleEngine:
                 raise ValidationError(
                     f"rule {rule_id} uses an unsupported operator", details={"operator": operator}
                 )
+            indicator_id = str(entry["indicator"])
+            # A typo in the indicator id would otherwise load cleanly and
+            # then never fire, with nothing in the logs to explain why.
+            if indicator_id not in INDICATOR_BY_ID:
+                raise ValidationError(
+                    f"rule {rule_id} references an unknown indicator",
+                    details={"indicator": indicator_id},
+                )
             return Clause(
                 kind="indicator",
-                indicator_id=str(entry["indicator"]),
+                indicator_id=indicator_id,
                 operator=operator,
                 value=entry.get("value"),
                 value_high=entry.get("value_high"),
@@ -364,6 +374,7 @@ class RuleEngine:
             if fingerprint_of is not None:
                 alert.fingerprint = fingerprint_of(alert)
             alerts.append(alert)
+            ALERTS.labels(rule=rule.id, severity=alert.severity.value).inc()
         return alerts
 
     def evaluate_assessment(

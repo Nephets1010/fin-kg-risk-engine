@@ -32,6 +32,7 @@ from fin_kg.graph.alignment import EntityResolver
 from fin_kg.graph.repository import GraphRepository
 from fin_kg.ingestion.base import RawRecord, RecordKind, SourceAdapter, chunked
 from fin_kg.ingestion.cleaning import Cleaner, dedupe_key
+from fin_kg.observability.metrics import INGESTION_DURATION, INGESTION_RECORDS
 
 logger = get_logger(__name__)
 
@@ -221,6 +222,8 @@ class IngestionPipeline:
 
         report.cleaning = self.cleaner.stats.as_dict()
         report.duration_seconds = round((datetime.now(timezone.utc) - started).total_seconds(), 3)
+        for source_id in report.source_ids:
+            INGESTION_DURATION.labels(source=source_id).observe(report.duration_seconds)
         logger.info(
             "ingestion complete fetched=%s nodes=%s relations=%s in %ss",
             report.fetched,
@@ -256,6 +259,7 @@ class IngestionPipeline:
             key = dedupe_key(record)
             if key in seen_keys:
                 report.deduplicated += 1
+                INGESTION_RECORDS.labels(source=source.name, outcome="deduplicated").inc()
                 continue
             seen_keys.add(key)
 
@@ -263,16 +267,21 @@ class IngestionPipeline:
                 relation = self._build_relation(record)
                 if relation is not None:
                     relations.append(relation)
+                    INGESTION_RECORDS.labels(source=source.name, outcome="accepted").inc()
+                else:
+                    INGESTION_RECORDS.labels(source=source.name, outcome="rejected").inc()
                 continue
 
             try:
                 node = self.cleaner.clean(record)
             except Exception:  # already counted and logged by the cleaner
                 report.rejected += 1
+                INGESTION_RECORDS.labels(source=source.name, outcome="rejected").inc()
                 continue
             node = self._align_node(node, record)
             nodes.append(node)
             report.accepted += 1
+            INGESTION_RECORDS.labels(source=source.name, outcome="accepted").inc()
 
         # Relations may reference nodes created in this very batch, so nodes
         # are persisted before relations.

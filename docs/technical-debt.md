@@ -170,7 +170,7 @@ AttributeError: 'QueryPlan' object has no attribute 'question'
 | U-01 | **GNN 训练/推理** | `risk/gnn/` | ADR-0004「基准分与模型分并行输出」 | **已接线**（见下） |
 | U-02 | **实体别名表** | `graph/alignment.py` | architecture.md「三级级联」第三级 | **已接线** |
 | U-03 | `RedisJobStore` | `api/jobs.py` | ADR-0007「多副本部署用 Redis 版」 | 记录，见待确认项 |
-| U-04 | `FileChannel` | `observability/alerting.py` | 「审计与回放」 | 已接线（随 B-01 修复） |
+| U-04 | `FileChannel` | `observability/alerting.py` | 「审计与回放」 | 已接线（第六轮补，默认关闭，需 `FIN_KG_ALERT_FILE_PATH`） |
 | U-05 | `SourceAdapter.healthcheck` | `ingestion/base.py` | — | 记录，见待确认项 |
 | U-06 | `RiskScorer.coverage_report` | `risk/scoring.py` | ADR-0004「coverage 字段反映数据覆盖率」 | 记录，见待确认项 |
 | U-07 | `EntityResolver.resolve_generic` | `graph/alignment.py` | — | 记录，见待确认项 |
@@ -826,3 +826,86 @@ for item in stored_items(existing):
 | **内部行为** | 金额解析支持千分位；溯源合并双向去重；事件日期在 Cypher 中显式转换；坏关系被隔离且系统故障不被掩盖 |
 | **未改动** | 风险评分模型与权重、指标阈值表、规则文件、实体 ID 生成、图谱 schema、CLI 命令 |
 | **测试** | 382 → 407（新增 `tests/unit/test_audit_round4.py` 25 项 + Neo4j 集成 3 项） |
+
+---
+
+# 第六轮排查（2026-11-09，工程基础设施与运行时组件）
+
+- **基线**：`3efe488`，16473 行 Python，407 项测试，覆盖率 82.90%
+- **处置后**：457 项测试，覆盖率 83.68%
+- **分工**：架构师审 CI / 供应链 / Docker / 迁移 / Makefile / 部署；QA 审规则一致性 / RedisJobStore / 可观测性 / 并发 / CLI / 文档漂移；主 Agent 独立复核并实施
+- **审计清单**：架构师 26 条、QA 37 条，全部经主 Agent 实跑复核
+
+这一轮的问题集中在**「系统能跑，但某个环节从来没工作过」**。它们不在异常里、不在日志里，只在把那条链路真正走一遍时才显形。
+
+## 二十二、已修复
+
+### 严重问题
+
+| 编号 | 问题 | 影响 | 修复 |
+|---|---|---|---|
+| **S-14** | **Docker 镜像无法启动 API 与 worker**：builder 阶段只 `COPY src/fin_kg/__init__.py`，setuptools 的 `packages.find` 因此只识别出顶层包，wheel 里只有 1 个 `.py`；真正的源码又落在 `/app/src`（不在 `sys.path`） | `docker compose up`、`make up`、CI 的 build job、所有镜像部署**全部不可用** | builder 复制完整 `src/`，runtime 从 venv 取包，不再 `COPY src/` |
+| **S-01** | **critical 规则 `R-ENF-001` 永不触发**：要求 `IND-ENF-001 >= 50000`，而该指标是「倍数」口径、上限 5.0。同一规则的 description 已写成「倍数异常」，同批迁移的 `R-GUA-001` 已改为 `1.0`——这是漏改 | 强制执行金额异常这条 critical 预警实际是死的 | `value: 50000` → `1.0` |
+| **S-17** | **Prometheus `path` 标签用具体 URL**，而 URL 含实体 ID | 每个实体一条时序；10 万实体 = 10 万条时序，抓取比被测服务还慢 | 改用路由模板 `/api/v1/graph/entities/{entity_id}`；未匹配 URL 归入 `unmatched` |
+| **S-19** | **`fin_kg_dependency_up` 从未被赋值** | 文档告警规则「图存储不可达」永远拿不到数据 | 在 `/health` 的依赖检查里 `.set(1/0)` |
+| **S-20** | **12 个声明指标中 7 个零写入点**，其中 2 个正是文档 §5.2 告警规则依赖的 `fin_kg_ingestion_records_total` 与 `fin_kg_alerts_total` | 「接入停滞」和「预警激增」这两条最该有的业务告警永远静默 | 接入全部 7 个；新增静态扫描守护测试 |
+| **S-02** | **`company_industry` 索引在 `schema.py` 中缺失**（磁盘 `V004` 有、Python 定义没有），而 `docs/data-model.md` §6 声明了它 | 按行业筛选在生产上退化为全表扫描 | 补进 `schema.py` |
+
+### 中风险
+
+| 编号 | 问题 | 修复 |
+|---|---|---|
+| **S-03** | `migrations/` 目录与 `graph/schema.py` 双源真相且已分叉——**没有任何代码读那个目录**，README 与数据模型文档却都指向它 | 新增 `tests/unit/test_schema_consistency.py`（13 项）守护两者一致，并断言文档声明的索引确实被创建 |
+| **S-04** | 磁盘 `V005` 的关系索引用有向模式 `-[r]->()`，比 Python 侧的无向模式 `-[r]-()` 覆盖范围小 | 改为无向模式 |
+| **S-05** | `docs/data-model.md` 把属性名写成 `guaranteedAmount`，代码全用 `guaranteed_amount`；运维按文档查属性会找不到 | 两份语言版本均改正 |
+| **S-08** | `FIN_KG_TUSHARE_TOKEN` 绕过 `Settings` 直读 `os.environ`——不受模型管辖、不脱敏 | 新增 `TushareSettings`（环境变量名不变，部署零影响），token 改为 `SecretStr` |
+| **S-09** | `TushareSourceAdapter` 文档称「token 从不存储在实例上」，实际 `self._token = token` 存了 | 改正文档并加 `__repr__` 脱敏 |
+| **S-11** | `Makefile` 的 `lint` / `format` 只覆盖 `src tests`，漏了 `scripts/`（CI 上一轮已修，Makefile 未同步） | 补齐 `scripts` |
+| **S-13** | CI 5 个 job 全部缺 `timeout-minutes` | 按 job 特性补齐（5/15/10/15/5 分钟） |
+| **S-15** | 生产镜像携带完整开发工具链（pytest / ruff / mypy / pytest-cov） | 改 `pip install .`，只装运行时依赖 |
+| **S-16** | 镜像 `COPY data/ ./data/` 把本地运行产物 `local-graph.json` 打进生产镜像 | 只复制 `data/samples/` 与 `data/aliases.yaml` |
+| **S-21** | 文档让 Prometheus 去抓 `api:9100`，但**没有任何进程监听 9100**——指标实际在 API 的 8000 | 文档、compose、Dockerfile 统一到 8000；`metrics_port` 标注为「预留、当前未接线」 |
+| **S-22** | worker 容器继承镜像的 HTTP 健康检查去探 `:8000`，而 worker 不提供 HTTP 服务 | compose 里对该服务 `healthcheck: disable` |
+| **S-23** | CI 的 build job 只构建镜像、不运行镜像——**S-14 正是靠这个逃逸的** | 加 `docker run` 烟囱测试，直接 import 三个入口点 |
+| **S-26** | 规则加载时不校验指标 ID，拼错会静默加载、永不触发、零日志 | 加载期即抛 `ValidationError` |
+
+### 低风险
+
+| 编号 | 问题 | 修复 |
+|---|---|---|
+| **S-06** | README 声称「211 通过 / 6 跳过」、单元 184 / API 集成 27 / Neo4j 集成 6，实际已是 407 / 376 / 31 / 9 | 两份语言版本同步更正 |
+| **S-07** | README 的项目结构树漏了 4 个文档 | 两份语言版本同步补全 |
+| **S-10** | `FIN_KG_INGESTION_ALIAS_FILE` 与 `FIN_KG_GNN_LABEL_SEVERITY` 未在 `.env.example` 声明——部署方无从得知 | 补声明并加测试守护 |
+| **S-12** | `Makefile` 头部注释称「lint 跑 ruff 和 mypy」，实际 mypy 在独立的 `typecheck` target | 改正注释 |
+| **S-24** | CI 的 build job 只依赖 `lint` 与 `test`，安全扫描失败不阻止出镜像 | 依赖补全为 `[lint, test, security, neo4j-integration]` |
+| **S-25** | `FileChannel` 定义了但 `from_settings` 从不挂载，而台账 U-04 声称「已接线」 | 加 `FIN_KG_ALERT_FILE_PATH` 配置项接线（默认关闭），并订正台账 |
+
+## 二十三、待确认项（未擅自实施）
+
+| 编号 | 项 | 为什么需要确认 |
+|---|---|---|
+| U-1 | `RedisJobStore` 从未接线，compose 的 redis 服务与 6379 端口暴露是装饰性的 | 接线前需先修它的 4 个前置缺陷（键过期、`_read` 吞异常、`create` 竞态、`get` 跨 worker 回退）。单副本部署下它没有价值，多副本下没有它会 404——取决于部署形态 |
+| U-2 | 告警零抑制：同一告警每轮重复推送（实测 96 次/天） | 需要状态存储，而 Redis 尚未接线；在没有去重存储前加抑制会丢告警 |
+| U-3 | 溯源并发的读-改-写丢更新 | 确定性可复现，但修复要么用 `update_properties` 原子化（依赖 Neo4j），要么引入锁——涉及写入路径的可靠性取舍 |
+| U-4 | `get_node()` 返回内部 dict 的活引用 | 调用方的一次赋值即可改坏图谱。改为深拷贝有性能代价，需权衡 |
+| U-5 | mypy 类型门禁被 `continue-on-error: true` 永久关闭 | 变成硬门禁前需要知道当前错误规模；本地 3.13 环境因 numpy stub 不兼容无法复现 CI（3.12）的结果 |
+| U-6 | 11 处 GitHub Action 使用可变标签，未锁 commit SHA | 供应链加固。锁 SHA 需要定期维护 |
+| U-7 | `python-multipart` 是唯一没有上界的运行时依赖 | 需要定一个上界，但也要确认 FastAPI 的实际兼容区间 |
+| U-8 | `redis` / `tenacity` / `python-multipart` 三个运行时依赖零引用 | `redis` 应随 U-1 一起处理；另两个取决于是否计划启用相关能力 |
+| U-9 | `ensure_schema()` 每次启动执行 22 次数据库往返 | 迁移记账节点没有约束与索引。优化需要改记账模型 |
+| U-10 | compose 的 `env_file: .env` 是必需文件，缺失时连 `docker compose config` 都失败 | 是否该改成可选，影响首次部署体验 |
+| U-11 | 12 个指标中 8 个从未被赋值（比例类需要真实数据才有意义） | 什么条件下这些指标应该有值，需要业务定义 |
+| U-12 | 溯源指纹口径不一致（实现用 `sha256(sourceId\|recordId\|sourceUrl)`，文档与 ADR 写成 `provider`） | 指纹参与去重，改口径要迁移既有数据 |
+| U-13 | 评分分布（中位数 / P95 / P99）未暴露 | 需要确认风控是否依赖这些分位值 |
+
+## 二十四、第六轮变更影响范围
+
+| 类别 | 内容 |
+|---|---|
+| **对外接口（行为变更，已记录）** | `R-ENF-001` 从「永不触发」变为「≥1 倍时触发」；`/metrics` 的 `path` 标签改为路由模板（序列数大幅下降） |
+| **对外接口（回归到已声明契约）** | 镜像可启动；Prometheus 抓取目标可用；4 条文档化告警规则全部有数据源；`FileChannel` 按台账声称接上 |
+| **对外接口（无变化）** | 所有 HTTP 路径、请求/响应模型与字段、错误信封、状态码、CLI 命令 |
+| **内部行为** | 规则加载期校验指标 ID；密钥统一走 Settings；摄入 / 评分 / 传导 / 图规模写入指标 |
+| **未改动** | 风险评分模型与权重、指标阈值表、实体 ID 生成、图谱 schema 的约束集合、Neo4j 写入路径 |
+| **配置** | 新增 `FIN_KG_ALERT_FILE_PATH`（可选，缺省关闭）；`FIN_KG_METRICS_PORT` 标注为预留 |
+| **测试** | 407 → 457（新增 `test_audit_round6.py` 23 项、`test_schema_consistency.py` 13 项、`test_metric_writers.py` 14 项） |

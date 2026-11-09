@@ -74,6 +74,7 @@ MIGRATIONS: tuple[Migration, ...] = (
             "CREATE INDEX person_name IF NOT EXISTS FOR (n:Person) ON (n.name)",
             "CREATE INDEX company_risk_score IF NOT EXISTS FOR (n:Company) ON (n.riskScore)",
             "CREATE INDEX product_name IF NOT EXISTS FOR (n:Product) ON (n.name)",
+            "CREATE INDEX company_industry IF NOT EXISTS FOR (n:Company) ON (n.industry)",
         ),
     ),
     Migration(
