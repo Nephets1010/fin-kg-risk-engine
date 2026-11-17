@@ -94,6 +94,15 @@ DEPENDENCY_UP = Gauge(
     registry=REGISTRY,
 )
 
+#: Number of rules currently loaded. Zero means the rule file failed to
+#: parse and the engine fell back to an empty rule set — a state the API
+#: otherwise reports as a healthy 200, so operators need a signal for it.
+RULES_LOADED = Gauge(
+    "fin_kg_rules_loaded",
+    "Number of risk rules currently loaded (0 means the rule file failed to load)",
+    registry=REGISTRY,
+)
+
 JOB_RUNS = Counter(
     "fin_kg_jobs_total",
     "Background jobs executed",
@@ -128,5 +137,6 @@ __all__ = [
     "PROPAGATED",
     "REGISTRY",
     "RISK_SCORES",
+    "RULES_LOADED",
     "render_metrics",
 ]

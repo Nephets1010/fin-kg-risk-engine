@@ -38,6 +38,7 @@ from fin_kg.ingestion.sources import (
     SyntheticSourceAdapter,
     TushareSourceAdapter,
 )
+from fin_kg.observability.metrics import RULES_LOADED
 from fin_kg.research.kgqa import KGQA
 from fin_kg.research.report import ReportGenerator
 from fin_kg.research.similarity import SimilarCaseFinder
@@ -115,14 +116,23 @@ def _service_for(repository: GraphRepository, name: str, factory: Any) -> Any:
 
 @lru_cache(maxsize=1)
 def get_rules() -> RuleEngine:
-    """Return the rule engine loaded from the rule file."""
+    """Return the rule engine loaded from the rule file.
+
+    Loading failures still degrade to an empty engine — changing that to a
+    hard failure is a separate, unapproved decision. They are now observable
+    through ``fin_kg_rules_loaded`` (0 on failure, rule count on success), so
+    an operator can alert on a state that used to look healthy.
+    """
     settings = get_settings()
     path = settings.resolve_path(settings.risk.rules_path)
     try:
-        return RuleEngine.from_yaml(path)
+        engine = RuleEngine.from_yaml(path)
     except Exception as exc:  # a broken rule file must not kill the API
         logger.error("failed to load risk rules from %s: %s", path, exc)
+        RULES_LOADED.set(0)
         return RuleEngine(rules=[])
+    RULES_LOADED.set(len(engine.rules))
+    return engine
 
 
 def get_gnn_service(repository: GraphRepository = Depends(get_repository)) -> GnnRiskService:

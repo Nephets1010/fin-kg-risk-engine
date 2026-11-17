@@ -469,7 +469,7 @@ fin-kg-risk-engine/
 
 ```bash
 make install-dev     # install dependencies
-make test            # all tests (407 passing / 9 skipped)
+make test            # all tests (502 passing / 9 skipped; coverage 82.31%, latest baseline in docs/technical-debt.md)
 make test-unit       # unit tests only
 make coverage        # coverage report
 make lint            # ruff

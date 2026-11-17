@@ -2,9 +2,10 @@
 
 Every tunable value of the platform lives here and is resolved from the
 process environment (optionally seeded from a local ``.env`` file). Nothing in
-the code base reads ``os.environ`` directly, and no credential is ever given a
-default value — :class:`Settings` fails fast at startup when a required secret
-is missing in a non-development environment.
+the code base reads ``os.environ`` directly — GNN weak-supervision tuning is
+resolved through :class:`GnnSettings` just like every other knob — and no
+credential is ever given a default value — :class:`Settings` fails fast at
+startup when a required secret is missing in a non-development environment.
 """
 
 from __future__ import annotations
@@ -94,6 +95,24 @@ class RiskSettings(BaseSettings):
         return self
 
 
+class GnnSettings(BaseSettings):
+    """Weak-supervision tuning for GNN training.
+
+    The severity threshold used to derive training labels used to be read
+    straight from ``os.environ`` in the CLI. It lives here so that every
+    environment variable is declared and validated in one place. The variable
+    name (``FIN_KG_GNN_LABEL_SEVERITY``) and default are unchanged.
+
+    The domain is the alert severity ladder from :class:`AlertSeverity` /
+    ``WeakSupervisor._order`` — ``info / warning / major / critical`` — not the
+    risk-level ladder (``low / medium / high / critical``).
+    """
+
+    model_config = SettingsConfigDict(env_prefix="FIN_KG_GNN_", extra="ignore")
+
+    label_severity: Literal["info", "warning", "major", "critical"] = "major"
+
+
 class IngestionSettings(BaseSettings):
     """Batch sizes and working directories of the ETL pipeline."""
 
@@ -176,6 +195,7 @@ class Settings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     tushare: TushareSettings = Field(default_factory=TushareSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
+    gnn: GnnSettings = Field(default_factory=GnnSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)

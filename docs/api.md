@@ -182,6 +182,23 @@ k 跳邻域路径。
 | `readings` | 全部指标读数与贡献度 |
 | `explanation` | 一句话解释主要风险来源 |
 
+### `GET /api/v1/risk/entities/{entity_id}/coverage`
+
+某主体风险分的指标覆盖度。实体不存在返回 404；响应是独立模型，**不向 `RiskScoreResponse` 增加任何字段**。
+
+```json
+{
+  "entityId": "company-...",
+  "entityName": "恒基建筑工程有限公司",
+  "totalIndicators": 12,
+  "coveredIndicators": 9,
+  "coverage": 0.75,
+  "missingIndicatorIds": ["IND-PEN-001", "IND-DEF-001", "IND-CTL-001"]
+}
+```
+
+`coverage` 为有读数的指标占全部读数的比例。该端点内部会调用一次评分以取得与 `/score` 完全相同的读数，因此 `fin_kg_risk_scores_computed_total` 会递增一次（与 `/score` 相同的「一次评分一次计数」语义）；分数本身不变。
+
 ### `GET /api/v1/risk/alerts`
 
 规则预警。告警在**候选池**上求值：候选池按已存储的风险分排序后取前 `limit × 3`（或配置项 `alert_candidates` 指定的数量），只对这部分主体跑规则与传导。
@@ -302,6 +319,8 @@ curl -s -X POST http://localhost:8000/api/v1/research/ask \
 
 无法识别时返回 `intent: "unknown"` 并给出建议问法。
 
+请求体另含保留字段 `topK`（1~50），**当前未生效**：返回条数由问题文本中的「前 N 名」决定，未写明时由规划器默认取 20。该字段仅为兼容既有契约而保留，传入后被接受但不影响结果。
+
 ### `GET /api/v1/research/similar/{entity_id}`
 
 结构可比案例。
@@ -356,6 +375,21 @@ curl -s -X POST http://localhost:8000/api/v1/research/ask \
 ```
 
 七个固定小节：主体概况 / 股权结构 / 风险画像 / 风险传导 / 风险事件 / 可比案例 / 关注要点。
+
+### `GET /api/v1/research/report/{entity_id}/download`
+
+以 Markdown 附件形式下载同一份投研简报。响应正文与 `/report` 的 `markdown` 字段逐字节一致；实体不存在返回 404。
+
+```bash
+curl -OJ http://localhost:8000/api/v1/research/report/company-.../download
+```
+
+| 响应头 | 值 |
+|---|---|
+| `Content-Type` | `text/markdown; charset=utf-8` |
+| `Content-Disposition` | `attachment; filename="<entity_id>.md"; filename*=UTF-8''<百分号编码的实体名.md>` |
+
+`filename*` 使用 RFC 5987 编码以保留中文实体名；ASCII 的 `filename` 作为兼容回退。文件名经过百分号编码，不含路径分隔符。重名文件的覆盖策略待业务确认。
 
 ---
 
@@ -434,6 +468,7 @@ curl -s -X POST http://localhost:8000/api/v1/research/ask \
 | `fin_kg_dependency_up` | Gauge | name | 依赖可达性（1/0） |
 | `fin_kg_jobs_total` | Counter | job_type, status | 任务执行数 |
 | `fin_kg_job_duration_seconds` | Histogram | job_type | 任务耗时 |
+| `fin_kg_rules_loaded` | Gauge | — | 当前加载的风险规则数；规则文件解析失败时为 0（API 仍返回 200，请据此告警） |
 
 ---
 
@@ -453,6 +488,7 @@ GET    /api/v1/graph/entities/{id}/paths     两实体路径
 
 GET    /api/v1/risk/entities/{id}/score      风险评分
 GET    /api/v1/risk/rank                     风险排名
+GET    /api/v1/risk/entities/{id}/coverage   指标覆盖度
 GET    /api/v1/risk/alerts                   预警列表
 GET    /api/v1/risk/entities/{id}/alerts     主体预警
 GET    /api/v1/risk/entities/{id}/exposure   风险敞口
@@ -460,6 +496,7 @@ GET    /api/v1/risk/entities/{id}/exposure   风险敞口
 POST   /api/v1/research/ask                  智能问答
 GET    /api/v1/research/similar/{id}         可比案例
 GET    /api/v1/research/report/{id}          投研简报
+GET    /api/v1/research/report/{id}/download 投研简报下载
 
 POST   /api/v1/jobs/ingest                   启动接入任务
 GET    /api/v1/jobs/{id}                     任务状态

@@ -7,10 +7,10 @@ The scheduler runs the recurring work of the platform:
 ``propagate``  recompute the risk propagation and emit the new alerts
 ``research``   refresh the research material for the highest-risk entities
 
-The implementation uses :mod:`schedule` when it is installed and falls back
-to a plain thread with :func:`time.sleep` otherwise. The fallback exists so
-that the container image does not need a native dependency for a feature
-that runs four times a day.
+The implementation uses a built-in five-field cron matcher, evaluated on a
+one-minute tick in a background thread. There is no optional scheduling
+dependency: the removed ``schedule`` branch passed a cron expression to an
+API that only accepts a time of day, so it could never fire correctly.
 
 Every job run is measured and reported through the Prometheus metrics, and
 failures are logged with the full traceback but never crash the scheduler.
@@ -107,27 +107,16 @@ class Scheduler:
     # -- background execution ----------------------------------------------
 
     def _loop(self) -> None:
-        """The scheduler loop.
+        """Evaluate the registered cron expressions on a one-minute tick.
 
-        When the ``schedule`` package is available it drives the jobs;
-        otherwise a one-minute tick re-evaluates the cron expressions with a
-        minimal parser that supports the five-field form used by the
-        configuration.
+        The built-in five-field matcher is the single code path. The former
+        optional ``schedule`` branch could not work — it passed a five-field
+        expression where the library expects a time of day — and any
+        environment that happened to provide the module silently took that
+        broken path. Expressions are interpreted in UTC; the configured
+        timezone name is informational only (see ``docs/deployment.md`` and
+        the pending R7-B04 decision).
         """
-        try:
-            import schedule  # type: ignore[import-not-found]
-
-            while not self._stop.is_set():
-                with self._lock:
-                    jobs = list(self.jobs)
-                for job in jobs:
-                    if job.enabled and schedule.every().minute.at(job.cron).should_run:
-                        threading.Thread(target=self.run_job, args=(job,), daemon=True).start()
-                self._stop.wait(30)
-            return
-        except ImportError:
-            logger.info("'schedule' is not installed — using the built-in tick loop")
-
         while not self._stop.is_set():
             now = datetime.now(timezone.utc)
             with self._lock:

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 import pytest
 
 from fin_kg.core.errors import ValidationError
-from fin_kg.domain.entities import Company
+from fin_kg.domain.entities import Company, Event, EventType
 from fin_kg.domain.relations import Relation, RelationType
 from fin_kg.domain.risk import IndicatorReading, RiskScore, TransmissionPath
 from fin_kg.risk.engine import RuleEngine, alert_fingerprint
@@ -403,3 +405,110 @@ class TestGNN:
 
     def test_roc_auc_without_positives_is_zero(self) -> None:
         assert roc_auc(np.array([0.1, 0.2]), np.array([0.0, 0.0])) == 0.0
+
+
+class TestRound7RiskFixes:
+    """R7-A07 / R7-A09: de-duplicated affected lists, aligned date windows."""
+
+    @staticmethod
+    def _path(node_ids: list[str]) -> TransmissionPath:
+        return TransmissionPath(
+            node_ids=node_ids,
+            node_names=[node.upper() for node in node_ids],
+            relation_types=["GUARANTEE"] * (len(node_ids) - 1),
+            transmissibilities=[1.0] * (len(node_ids) - 1),
+            propagated_score=50.0,
+            hops=len(node_ids) - 1,
+        )
+
+    @staticmethod
+    def _path_rule() -> RuleEngine:
+        return RuleEngine.from_payload(
+            {
+                "rules": [
+                    {
+                        "id": "R-PATH-DEDUP",
+                        "name": "path",
+                        "severity": "critical",
+                        "condition": {
+                            "all": [
+                                {
+                                    "path": {
+                                        "relation_types": ["GUARANTEE"],
+                                        "min_hops": 1,
+                                        "min_paths": 1,
+                                    }
+                                }
+                            ]
+                        },
+                        "message": "hit",
+                    }
+                ]
+            }
+        )
+
+    def test_affected_entities_are_deduplicated_in_first_reach_order(self) -> None:
+        paths = [self._path(["a", "b", "c"]), self._path(["a", "d", "c"])]
+        assessment = self._path_rule().evaluate_assessment(
+            RiskScore(entity_id="a", score=50), paths
+        )
+        assert [item["id"] for item in assessment.affected_entities] == ["b", "c", "d"]
+        assert assessment.affected_entities[1] == {"id": "c", "name": "C", "hops": 2}
+        # Paths keep every hop; only the flattened list is de-duplicated.
+        assert len(assessment.transmission_paths) == 2
+
+    def test_alert_affected_ids_are_deduplicated(self) -> None:
+        paths = [self._path(["a", "b", "c"]), self._path(["a", "d", "c"])]
+        alerts = self._path_rule().evaluate(RiskScore(entity_id="a", score=50), paths)
+        assert alerts[0].affected_entity_ids == ["b", "c", "d"]
+
+    def test_undated_events_are_skipped_like_in_cypher(self, repository) -> None:
+        from fin_kg.domain.indicators import INDICATOR_BY_ID
+        from fin_kg.risk.indicators_engine import LocalIndicatorEngine
+
+        events = [
+            Event(id="e-undated", name="无日期", event_type=EventType.LITIGATION),
+            Event(
+                id="e-old",
+                name="旧事件",
+                event_type=EventType.LITIGATION,
+                occurred_date=date(2020, 1, 1),
+            ),
+            Event(
+                id="e-fresh",
+                name="新事件",
+                event_type=EventType.LITIGATION,
+                occurred_date=date(2026, 1, 2),
+            ),
+            Event(
+                id="e-amount-undated",
+                name="无日期金额",
+                event_type=EventType.ENFORCEMENT,
+                amount=1000.0,
+            ),
+            Event(
+                id="e-amount-fresh",
+                name="新金额",
+                event_type=EventType.ENFORCEMENT,
+                amount=50.0,
+                occurred_date=date(2026, 1, 2),
+            ),
+        ]
+        repository.upsert_nodes([Company(id="c1", name="甲"), *events])
+        repository.upsert_relations(
+            [
+                Relation(
+                    source_id="c1",
+                    target_id=event.id,
+                    relation_type=RelationType.INVOLVED_IN,
+                    properties={},
+                )
+                for event in events
+            ]
+        )
+        engine = LocalIndicatorEngine(repository)
+        since = date(2026, 1, 1)
+        # IND-LIT-001 counts both litigation and enforcement: one recent
+        # event of each kind survives, the undated and old ones do not.
+        assert engine._count_events(INDICATOR_BY_ID["IND-LIT-001"], "c1", since=since) == 2.0
+        assert engine._sum_event_amounts("c1", since, "enforcement") == 50.0

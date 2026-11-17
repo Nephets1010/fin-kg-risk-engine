@@ -170,7 +170,9 @@ class LocalIndicatorEngine(IndicatorEngine):
             if target.get("eventType") not in wanted:
                 continue
             occurred = target.get("occurredDate")
-            if occurred and str(occurred) < since.isoformat():
+            # The Cypher reference requires e.occurredDate >= $since; a NULL
+            # date fails that comparison. Skip undated events here too.
+            if not occurred or str(occurred) < since.isoformat():
                 continue
             count += 1
         return float(count)
@@ -184,7 +186,9 @@ class LocalIndicatorEngine(IndicatorEngine):
             if target.get("eventType") != event_type:
                 continue
             occurred = target.get("occurredDate")
-            if occurred and str(occurred) < since.isoformat():
+            # Undated events are excluded by the Cypher window filter; keep
+            # the two engines aligned instead of counting them here.
+            if not occurred or str(occurred) < since.isoformat():
                 continue
             total += float(target.get("amount") or 0.0)
         return total

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from fin_kg.api.deps import RiskServiceDep, require_api_key
 from fin_kg.api.schemas import (
     AlertListResponse,
     AlertResponse,
+    CoverageResponse,
     ErrorResponse,
     ExposureResponse,
     IndicatorReadingResponse,
@@ -23,7 +26,7 @@ router = APIRouter(
     dependencies=[Depends(require_api_key)],
 )
 
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "API Key 缺失或错误"},
     404: {"model": ErrorResponse, "description": "实体不存在"},
     422: {"model": ErrorResponse, "description": "参数不合法"},
@@ -120,6 +123,17 @@ def risk_rank(
     """Return the highest-risk entities."""
     scores = service.rank(limit=limit, candidates=candidates)
     return RiskRankResponse(items=[_score_response(score) for score in scores], total=len(scores))
+
+
+@router.get(
+    "/entities/{entity_id}/coverage",
+    response_model=CoverageResponse,
+    summary="查询风险指标覆盖度",
+    responses=ERROR_RESPONSES,
+)
+def entity_coverage(entity_id: str, service: RiskServiceDep) -> CoverageResponse:
+    """Report how much of the indicator catalogue backs one entity's score."""
+    return CoverageResponse(**service.coverage(entity_id))
 
 
 @router.get(

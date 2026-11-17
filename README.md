@@ -465,7 +465,7 @@ fin-kg-risk-engine/
 
 ```bash
 make install-dev     # 安装依赖
-make test            # 全部测试（407 通过 / 9 跳过）
+make test            # 全部测试（502 通过 / 9 跳过；覆盖率 82.31%，最新基线见 docs/technical-debt.md）
 make test-unit       # 仅单元测试
 make coverage        # 覆盖率报告
 make lint            # ruff

@@ -190,6 +190,8 @@ scrape_configs:
 
 修改 cron：改环境变量 `FIN_KG_JOB_INGEST_CRON` 等，重启 worker 生效。
 
+> 当前实现按 **UTC** 解释上表的 cron 表达式（调度循环使用 `datetime.now(timezone.utc)`）；`FIN_KG_SCHEDULER_TIMEZONE` 目前只是展示字段，不会改变执行时刻。按配置时区解释属待确认项（R7-B04），本轮不改动时区行为。
+
 ---
 
 ## 7. 升级与回滚

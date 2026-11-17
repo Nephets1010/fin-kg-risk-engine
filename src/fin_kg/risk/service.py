@@ -229,6 +229,26 @@ class RiskService:
             self._persist_scores(result)
         return result
 
+    def coverage(self, entity_id: str, *, today: date | None = None) -> dict[str, Any]:
+        """Report how many indicators yielded a measurement for one entity.
+
+        Reuses the existing score/readings path; the score itself is not
+        changed and no write-back happens (unlike ``assess()`` / ``rank()``).
+        """
+        score = self.score(entity_id, today=today)
+        assert self._scorer is not None
+        report = self._scorer.coverage_report(score.readings)
+        missing = [str(indicator_id) for indicator_id in report["missing"]]
+        total = int(report["catalogueSize"])
+        return {
+            "entityId": score.entity_id,
+            "entityName": score.entity_name,
+            "totalIndicators": total,
+            "coveredIndicators": total - len(missing),
+            "coverage": round(float(report["coverage"]), 3),
+            "missingIndicatorIds": missing,
+        }
+
     def alerts(
         self,
         *,

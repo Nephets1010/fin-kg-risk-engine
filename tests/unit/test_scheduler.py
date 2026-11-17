@@ -217,3 +217,54 @@ class TestBuildScheduler:
         settings = self._settings()
         scheduler = build_scheduler(settings, handlers={"ingest": lambda: None})
         assert scheduler.jobs[0].cron == settings.scheduler.job_ingest_cron
+
+
+class TestLoopUsesBuiltinCron:
+    """R7-A13: a stray ``schedule`` module must not hijack the loop."""
+
+    def test_a_fake_schedule_module_is_ignored(self, monkeypatch) -> None:
+        import sys
+        import types
+
+        fake = types.ModuleType("schedule")
+
+        class _Every:
+            def minute(self):
+                return self
+
+            def at(self, expression):
+                raise AssertionError("the removed schedule branch was reached")
+
+        fake.every = lambda: _Every()  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "schedule", fake)
+
+        scheduler = Scheduler()
+        scheduler.register(JobDefinition(name="tick", cron="* * * * *", handler=lambda: None))
+
+        class _StopAfterFirstTick:
+            def __init__(self) -> None:
+                self.done = False
+
+            def is_set(self) -> bool:
+                return self.done
+
+            def set(self) -> None:
+                self.done = True
+
+            def clear(self) -> None:
+                self.done = False
+
+            def wait(self, timeout: float) -> bool:
+                return self.done
+
+        stop = _StopAfterFirstTick()
+        scheduler._stop = stop  # type: ignore[assignment]
+        calls: list[str] = []
+
+        def record(job: JobDefinition) -> None:
+            calls.append(job.name)
+            stop.set()
+
+        monkeypatch.setattr(scheduler, "run_job", record)
+        scheduler._loop()
+        assert calls == ["tick"]

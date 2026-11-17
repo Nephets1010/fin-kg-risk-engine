@@ -246,7 +246,7 @@ RISK_INDICATORS: tuple[IndicatorSpec, ...] = (
         direction=IndicatorDirection.HIGHER_IS_RISKIER,
         weight=0.05,
         unit="条",
-        description="近 30 天负面舆情事件数量",
+        description="近 12 个月负面舆情事件数量",
         measurement_cypher=(
             "MATCH (c:Company {id:$id})-[:INVOLVED_IN]->(e:Event) "
             "WHERE e.eventType='negative_news' AND date(e.occurredDate) >= date($since) "

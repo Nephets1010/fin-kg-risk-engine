@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Any
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from fin_kg.api.deps import KGQADep, ReportDep, RiskServiceDep, require_api_key
 from fin_kg.api.schemas import (
@@ -23,7 +26,7 @@ router = APIRouter(
     dependencies=[Depends(require_api_key)],
 )
 
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "API Key 缺失或错误"},
     404: {"model": ErrorResponse, "description": "实体或问题目标不存在"},
     422: {"model": ErrorResponse, "description": "参数不合法"},
@@ -125,6 +128,39 @@ def research_report(entity_id: str, service: RiskServiceDep, report: ReportDep) 
             )
             for section in document.sections
         ],
+    )
+
+
+@router.get(
+    "/report/{entity_id}/download",
+    response_class=Response,
+    summary="下载投研简报 Markdown",
+    responses=ERROR_RESPONSES,
+)
+def research_report_download(
+    entity_id: str, service: RiskServiceDep, report: ReportDep
+) -> Response:
+    """Serve the same briefing as ``/report`` as a Markdown attachment.
+
+    The body is byte-for-byte the ``markdown`` of the normal report. The
+    filename is RFC 5987 encoded so a Chinese entity name survives the
+    header; the ASCII entity id is kept as a compatibility fallback.
+    """
+    assessment = service.assess(entity_id)
+    document = report.generate(assessment)
+    body = document.to_markdown()
+    raw_name = (document.entity_name or entity_id).strip()
+    safe_name = raw_name.replace("/", "_").replace("\\", "_")
+    safe_name = "".join(char for char in safe_name if ord(char) >= 32) or entity_id
+    quoted = quote(f"{safe_name}.md", safe="")
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"{entity_id}.md\"; filename*=UTF-8''{quoted}"
+            )
+        },
     )
 
 

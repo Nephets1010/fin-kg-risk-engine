@@ -114,6 +114,19 @@ class RiskRankResponse(BaseModel):
     total: int = 0
 
 
+class CoverageResponse(BaseModel):
+    """How completely one entity's risk score is backed by indicators."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entityId: str
+    entityName: str = ""
+    totalIndicators: int = 0
+    coveredIndicators: int = 0
+    coverage: float = 0.0
+    missingIndicatorIds: list[str] = Field(default_factory=list)
+
+
 class AlertResponse(BaseModel):
     """A risk alert."""
 
@@ -151,9 +164,10 @@ class ExposureResponse(BaseModel):
 class AskRequest(BaseModel):
     """A natural-language question.
 
-    ``topK`` caps how many results the answer returns. It is an upper bound:
-    when the question itself names a count ("前 10 家公司"), the smaller of
-    the two wins. Leaving it unset keeps the planner's own default.
+    ``topK`` is a retained field and is currently **not applied**: the
+    result cap comes from a count in the question text ("前 N 名"), with the
+    planner's own default of 20 when no count is present. The field stays on
+    the wire contract for compatibility and is accepted but ignored.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -257,6 +271,7 @@ __all__ = [
     "AlertListResponse",
     "AlertResponse",
     "AnswerResponse",
+    "CoverageResponse",
     "EntityListResponse",
     "EntityResponse",
     "ErrorResponse",

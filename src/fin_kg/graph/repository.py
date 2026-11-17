@@ -27,6 +27,16 @@ from fin_kg.domain.relations import RELATION_SCHEMA, Relation, RelationType
 #: so every interpolated label must pass this whitelist first.
 ALLOWED_LABELS: frozenset[str] = frozenset({"Entity", "Company", "Person", "Event", "Product"})
 
+#: Read-path alias of the same whitelist. Both the write and the read path must
+#: be gated by one and the same set — defining a second collection here would
+#: let the two drift apart and reopen the injection hole.
+VALID_NODE_LABELS: frozenset[str] = ALLOWED_LABELS
+
+#: Property keys allowed in an ``ORDER BY`` clause. Cypher cannot parameterise
+#: identifiers either, so ``order_by`` is interpolated and needs its own
+#: whitelist. Only sort keys the domain actually stores are admitted.
+VALID_ORDER_COLUMNS: frozenset[str] = frozenset({"riskScore", "createdAt", "updatedAt"})
+
 #: Relationship types the platform is allowed to write, same reason as above.
 ALLOWED_RELATION_TYPES: frozenset[str] = frozenset(relation.value for relation in RelationType)
 
@@ -167,9 +177,41 @@ class GraphRepository(abc.ABC):
 
     @abc.abstractmethod
     def stats(self) -> dict[str, int]:
-        """Return node/relationship counts grouped by label and type."""
+        """Return node/relationship counts grouped by label and type.
+
+        ``Entity`` is the universal label: every node carries it (see
+        ``GraphNode.label_set()``), so ``stats()["Entity"]`` is the
+        de-duplicated node count. Callers that need a total must use that key
+        rather than summing the per-type labels — a company is both a
+        ``Company`` and an ``Entity``, and summing would double-count.
+        """
 
     # -- shared helpers ----------------------------------------------------
+
+    @staticmethod
+    def _validate_label(label: str) -> None:
+        """Reject a label before it is interpolated into a Cypher pattern.
+
+        This is the read-path counterpart of the write-path whitelist check.
+        Raising :class:`GraphStoreError` keeps any injection payload out of
+        the query entirely — the driver never sees the string.
+        """
+        if label not in VALID_NODE_LABELS:
+            raise GraphStoreError(
+                "refusing to query an unknown label",
+                details={"label": label, "allowed": sorted(VALID_NODE_LABELS)},
+            )
+
+    @staticmethod
+    def _validate_order_by(order_by: str | None) -> None:
+        """Reject an ``ORDER BY`` property that is not a declared sort key."""
+        if order_by is None:
+            return
+        if order_by not in VALID_ORDER_COLUMNS:
+            raise GraphStoreError(
+                "refusing to order by an unknown property",
+                details={"order_by": order_by, "allowed": sorted(VALID_ORDER_COLUMNS)},
+            )
 
     @staticmethod
     def _validate_relation(relation: Relation) -> None:
@@ -253,6 +295,10 @@ class InMemoryGraphRepository(GraphRepository):
         order_by: str | None = None,
         **filters: Any,
     ) -> list[dict[str, Any]]:
+        # Same guard as the production store: an unknown label or sort key is
+        # a programming error (or an attack), never a silent empty result.
+        self._validate_label(label)
+        self._validate_order_by(order_by)
         results: list[dict[str, Any]] = []
         for node_id, properties in self.snapshot.nodes.items():
             if label not in self.snapshot.node_labels.get(node_id, set()):
@@ -321,9 +367,14 @@ class InMemoryGraphRepository(GraphRepository):
         wrong answer is impossible.
         """
         params = parameters or {}
-        normalised = " ".join(cypher.split()).lower()
+        preserved = " ".join(cypher.split())
+        normalised = preserved.lower()
         if "match (n:" in normalised and "return n" in normalised:
-            label = normalised.split("match (n:", 1)[1].split(")", 1)[0]
+            # The whitelist is case-sensitive ("Company", not "company"), so
+            # slice the label out of the original text. Lowercasing it here
+            # used to make this offline lookup silently return nothing.
+            offset = normalised.index("match (n:") + len("match (n:")
+            label = preserved[offset:].split(")", 1)[0]
             filters = {k: v for k, v in params.items() if k != "since"}
             return self.find_nodes(label, **filters)
         raise GraphStoreError(
@@ -439,6 +490,25 @@ class FileGraphRepository(InMemoryGraphRepository):
 
     def update_properties(self, node_id: str, properties: dict[str, Any]) -> bool:
         updated = super().update_properties(node_id, properties)
+        if updated and self.autosave:
+            self.save()
+        return updated
+
+    def update_properties_bulk(self, updates: dict[str, dict[str, Any]]) -> int:
+        """Merge many nodes in memory and persist the graph only once.
+
+        Inheriting the in-memory loop would dynamically dispatch each
+        ``self.update_properties()`` call back to the override above, turning
+        one bulk operation into N full-file rewrites. Calling the base
+        implementation explicitly keeps the per-node behaviour identical
+        while collapsing the I/O into a single atomic ``save()``.
+        """
+        updated = 0
+        for node_id, properties in updates.items():
+            # Explicit ancestor call: `self.update_properties(...)` would
+            # re-enter FileGraphRepository's per-node save override.
+            if InMemoryGraphRepository.update_properties(self, node_id, properties):
+                updated += 1
         if updated and self.autosave:
             self.save()
         return updated
@@ -599,7 +669,13 @@ class Neo4jGraphRepository(GraphRepository):
         database does the work. Asking Neo4j for 100k nodes and discarding
         99 980 of them in Python is the difference between a 50 ms and a
         10 s request.
+
+        Both ``label`` and ``order_by`` become Cypher identifiers, so they
+        are whitelist-checked before any string is assembled. Property
+        filters are passed as parameters and need no such guard.
         """
+        self._validate_label(label)
+        self._validate_order_by(order_by)
         clauses = []
         if order_by:
             clauses.append(f"ORDER BY n.{order_by} DESC")
@@ -749,6 +825,10 @@ def bfs_distances(
 
 
 __all__ = [
+    "ALLOWED_LABELS",
+    "ALLOWED_RELATION_TYPES",
+    "VALID_NODE_LABELS",
+    "VALID_ORDER_COLUMNS",
     "GraphPath",
     "GraphRepository",
     "GraphSnapshot",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated, Any, Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from fin_kg.api.deps import Repository, require_api_key
@@ -12,7 +14,12 @@ from fin_kg.api.schemas import (
     GraphStatsResponse,
     PathResponse,
 )
+from fin_kg.domain.entities import ENTITY_TYPE_TO_LABEL, GraphEntityType
 from fin_kg.domain.relations import RelationType
+
+#: The five labels declared by the storage whitelist, mirrored at the HTTP
+#: boundary so an invalid label becomes a 422 instead of reaching the store.
+GraphLabel = Literal["Entity", "Company", "Person", "Event", "Product"]
 
 router = APIRouter(
     prefix="/api/v1/graph",
@@ -20,7 +27,7 @@ router = APIRouter(
     dependencies=[Depends(require_api_key)],
 )
 
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "API Key 缺失或错误"},
     404: {"model": ErrorResponse, "description": "实体不存在"},
     422: {"model": ErrorResponse, "description": "参数不合法"},
@@ -42,7 +49,10 @@ def graph_stats(repository: Repository) -> GraphStatsResponse:
     return GraphStatsResponse(
         nodes=nodes,
         relationships=relationships,
-        totalNodes=sum(nodes.values()),
+        # Every node carries the universal "Entity" label, so this key is the
+        # de-duplicated node count. Summing per-type labels would double-count
+        # each node (Company + Entity, Person + Entity, ...).
+        totalNodes=int(stats.get("Entity", 0)),
         totalRelationships=total_relationships,
     )
 
@@ -55,7 +65,10 @@ def graph_stats(repository: Repository) -> GraphStatsResponse:
 )
 def list_entities(
     repository: Repository,
-    label: str = Query(default="Company", description="节点标签"),
+    label: Annotated[
+        GraphLabel,
+        Query(description="节点标签，仅允许 Entity/Company/Person/Event/Product"),
+    ] = "Company",
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> EntityListResponse:
@@ -95,7 +108,7 @@ def get_entity(entity_id: str, repository: Repository) -> EntityResponse:
     return EntityResponse(
         id=str(node.get("id", entity_id)),
         name=str(node.get("name", "")),
-        labels=["Entity"],
+        labels=_detail_labels(node),
         properties=node,
     )
 
@@ -173,6 +186,26 @@ def paths_between(
             )
         )
     return results
+
+
+def _detail_labels(node: dict[str, Any]) -> list[str]:
+    """Return the concrete label a node carries, using stored discriminators.
+
+    ``get_node()`` returns properties only, so the label is inferred the same
+    way ``RiskService._infer_type()`` does. A node with no discriminator
+    keeps the historical ``["Entity"]`` answer rather than guessing.
+    """
+    if "industry" in node:
+        kind = GraphEntityType.COMPANY
+    elif "role" in node:
+        kind = GraphEntityType.PERSON
+    elif "eventType" in node:
+        kind = GraphEntityType.EVENT
+    elif "productType" in node:
+        kind = GraphEntityType.PRODUCT
+    else:
+        return ["Entity"]
+    return ["Entity", ENTITY_TYPE_TO_LABEL[kind]]
 
 
 def _parse_relations(raw: str) -> list[RelationType]:

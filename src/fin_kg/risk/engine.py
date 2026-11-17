@@ -369,7 +369,12 @@ class RuleEngine:
                     "modelVersion": score.model_version,
                 },
                 transmission_paths=path_list[:5] if rule.show_paths else [],
-                affected_entity_ids=[node for path in path_list for node in path.node_ids[1:]],
+                # Several paths can reach the same downstream entity; the
+                # alert lists it once, in first-reach order. The full paths
+                # above are untouched, so nothing about propagation is lost.
+                affected_entity_ids=list(
+                    dict.fromkeys(node for path in path_list for node in path.node_ids[1:])
+                ),
             )
             if fingerprint_of is not None:
                 alert.fingerprint = fingerprint_of(alert)
@@ -385,17 +390,19 @@ class RuleEngine:
         """Evaluate the rules and package the result with the paths."""
         path_list = paths or []
         alerts = self.evaluate(score, path_list)
-        affected = [
-            {
-                "id": node_id,
-                "name": node_name,
-                "hops": hops,
-            }
-            for path in path_list
+        # De-duplicate by node id, keeping the first reach (shortest/earliest
+        # path) and its own name and hop count. The shape of each entry and
+        # the unmodified ``transmission_paths`` are part of the API contract.
+        affected: list[dict[str, Any]] = []
+        seen_affected: set[str] = set()
+        for path in path_list:
             for node_id, node_name, hops in zip(
                 path.node_ids[1:], path.node_names[1:], range(1, len(path.node_ids)), strict=False
-            )
-        ]
+            ):
+                if node_id in seen_affected:
+                    continue
+                seen_affected.add(node_id)
+                affected.append({"id": node_id, "name": node_name, "hops": hops})
         return RiskAssessment(
             score=score,
             alerts=alerts,

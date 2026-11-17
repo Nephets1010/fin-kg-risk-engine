@@ -10,6 +10,10 @@ from fin_kg.domain.relations import Relation, RelationType
 from fin_kg.graph.repository import (
     ALLOWED_LABELS,
     ALLOWED_RELATION_TYPES,
+    VALID_NODE_LABELS,
+    VALID_ORDER_COLUMNS,
+    FileGraphRepository,
+    Neo4jGraphRepository,
     bfs_distances,
 )
 
@@ -139,6 +143,111 @@ class TestWhitelists:
 
     def test_whitelist_matches_the_domain(self) -> None:
         assert {relation.value for relation in RelationType} == ALLOWED_RELATION_TYPES
+
+
+class TestReadPathWhitelist:
+    """R7-A01: neither a label nor an ORDER BY key may reach Cypher unchecked."""
+
+    MALICIOUS_LABEL = "Company) DETACH DELETE n MATCH (m:Company"
+
+    def test_valid_labels_alias_the_write_whitelist(self) -> None:
+        assert VALID_NODE_LABELS is ALLOWED_LABELS
+        assert {"Entity", "Company", "Person", "Event", "Product"} == VALID_NODE_LABELS
+        assert {"riskScore", "createdAt", "updatedAt"} == VALID_ORDER_COLUMNS
+
+    @pytest.mark.parametrize("label", sorted(VALID_NODE_LABELS))
+    def test_every_declared_label_is_queryable(self, repository, label: str) -> None:
+        repository.upsert_nodes([Company(id="c1", name="甲")])
+        assert repository.find_nodes(label) is not None
+
+    @pytest.mark.parametrize("order_by", sorted(VALID_ORDER_COLUMNS))
+    def test_declared_order_columns_pass_the_guard(self, repository, order_by: str) -> None:
+        # Sorting by timestamps is a store-specific capability; an empty
+        # graph isolates the guard itself from the in-memory sort key parser.
+        assert repository.find_nodes("Company", order_by=order_by) == []
+
+    def test_risk_score_ordering_still_works(self, repository) -> None:
+        repository.upsert_nodes(
+            [
+                Company(id="c1", name="甲", risk_score=10.0),
+                Company(id="c2", name="乙", risk_score=90.0),
+            ]
+        )
+        assert [node["id"] for node in repository.find_nodes("Company", order_by="riskScore")] == [
+            "c2",
+            "c1",
+        ]
+
+    def test_in_memory_rejects_an_injection_label(self, repository) -> None:
+        with pytest.raises(GraphStoreError, match="unknown label"):
+            repository.find_nodes(self.MALICIOUS_LABEL)
+
+    def test_in_memory_rejects_an_injection_order_by(self, repository) -> None:
+        with pytest.raises(GraphStoreError, match="unknown property"):
+            repository.find_nodes("Company", order_by="riskScore DESC, n.name); DETACH DELETE n")
+
+    def test_neo4j_rejects_before_the_driver_is_called(self) -> None:
+        class _ExplodingDriver:
+            def session(self, **kwargs):  # pragma: no cover - must never be reached
+                raise AssertionError("the driver must not see an unvalidated query")
+
+        repository = Neo4jGraphRepository(_ExplodingDriver())
+        with pytest.raises(GraphStoreError, match="unknown label"):
+            repository.find_nodes(self.MALICIOUS_LABEL)
+        with pytest.raises(GraphStoreError, match="unknown property"):
+            repository.find_nodes("Company", order_by="riskScore); DETACH DELETE n")
+
+    def test_execute_read_labels_still_pass_the_guard(self, repository) -> None:
+        """Module-owned queries extract their label and go through find_nodes."""
+        repository.upsert_nodes([Company(id="c1", name="甲")])
+        rows = repository.execute_read("MATCH (n:Company) WHERE true RETURN n")
+        assert len(rows) == 1
+        with pytest.raises(GraphStoreError, match="unknown label"):
+            repository.execute_read("MATCH (n:UndeclaredLabel) RETURN n")
+
+
+class TestBulkWrite:
+    """R7-A03: the file store must collapse N updates into one save."""
+
+    def test_bulk_update_saves_once(self, tmp_path) -> None:
+        repository = FileGraphRepository(tmp_path / "graph.json")
+        repository.upsert_nodes([Company(id=f"c{i}", name=f"C{i}") for i in range(5)])
+        calls: list[int] = []
+        original_save = repository.save
+
+        def counting_save() -> None:
+            calls.append(1)
+            original_save()
+
+        repository.save = counting_save  # type: ignore[method-assign]
+
+        updates = {f"c{i}": {"riskScore": float(i)} for i in range(5)}
+        assert repository.update_properties_bulk(updates) == 5
+        assert len(calls) == 1
+        assert repository.get_node("c4")["riskScore"] == 4.0
+
+    def test_bulk_update_with_autosave_off_never_saves(self, tmp_path) -> None:
+        repository = FileGraphRepository(tmp_path / "graph.json", autosave=False)
+        repository.upsert_nodes([Company(id="c1", name="甲")])
+        calls: list[int] = []
+
+        def counting_save() -> None:
+            calls.append(1)
+
+        repository.save = counting_save  # type: ignore[method-assign]
+        assert repository.update_properties_bulk({"c1": {"riskScore": 1.0}}) == 1
+        assert calls == []
+        assert repository.get_node("c1")["riskScore"] == 1.0
+
+    def test_stats_entity_is_the_unique_node_count(self, repository) -> None:
+        repository.upsert_nodes(
+            [Company(id="c1", name="甲"), Company(id="c2", name="乙"), Event(id="e1", name="事件")]
+        )
+        stats = repository.stats()
+        assert stats["Entity"] == 3
+        assert stats["Entity"] == len(repository.snapshot.nodes)
+        # Naively summing the per-type labels counts every node twice.
+        assert stats["Company"] + stats["Event"] + stats["Entity"] == 6
 
 
 class TestSchema:

@@ -30,9 +30,9 @@ def health(repository: Repository, settings: SettingsDep) -> HealthResponse:
     try:
         stats = repository.stats()
         dependencies["graph_store"] = "ok"
-        dependencies["nodeCount"] = str(
-            sum(count for key, count in stats.items() if not key.startswith("REL:"))
-        )
+        # "Entity" is on every node, so it is the de-duplicated count;
+        # summing per-type labels would count each node twice.
+        dependencies["nodeCount"] = str(int(stats.get("Entity", 0)))
         DEPENDENCY_UP.labels(name="graph_store").set(1)
         # Publish the graph size. Without this the gauges stay at zero and
         # an operator cannot tell an empty graph from an unwired exporter.

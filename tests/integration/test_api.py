@@ -57,6 +57,38 @@ class TestGraphEndpoints:
         assert payload["totalNodes"] > 0
         assert payload["nodes"]["Company"] > 0
 
+    def test_total_nodes_is_the_unique_count(self, seeded_client: TestClient) -> None:
+        """R7-A02: the total equals the sum of concrete type labels."""
+        payload = seeded_client.get("/api/v1/graph/stats").json()
+        expected = sum(
+            payload["nodes"].get(name, 0) for name in ("Company", "Person", "Event", "Product")
+        )
+        assert payload["totalNodes"] == expected
+        assert payload["totalNodes"] == payload["nodes"]["Entity"]
+
+    def test_health_node_count_matches_stats_total(self, seeded_client: TestClient) -> None:
+        """R7-A02: both must use the same de-duplicated count."""
+        stats = seeded_client.get("/api/v1/graph/stats").json()
+        health = seeded_client.get("/health").json()
+        assert health["dependencies"]["nodeCount"] == str(stats["totalNodes"])
+
+    def test_malicious_label_is_rejected_at_the_boundary(self, seeded_client: TestClient) -> None:
+        """R7-A01: the API guard turns an injection payload into a 422."""
+        response = seeded_client.get(
+            "/api/v1/graph/entities",
+            params={"label": "Company) DETACH DELETE n MATCH (m:Company"},
+        )
+        assert response.status_code == 422
+        assert response.json()["code"] == "validation_error"
+
+    def test_entity_detail_reports_concrete_labels(self, seeded_client: TestClient) -> None:
+        """R7-A06: Entity plus the concrete type, never just a bare Entity."""
+        companies = seeded_client.get("/api/v1/graph/entities").json()["items"]
+        entity_id = companies[0]["id"]
+        labels = seeded_client.get(f"/api/v1/graph/entities/{entity_id}").json()["labels"]
+        assert "Entity" in labels
+        assert "Company" in labels
+
     def test_entity_list_is_paginated(self, seeded_client: TestClient) -> None:
         payload = seeded_client.get(
             "/api/v1/graph/entities", params={"label": "Company", "limit": 5}

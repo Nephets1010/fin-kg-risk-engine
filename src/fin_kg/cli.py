@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -192,8 +191,15 @@ def _weak_labels(repository: Any) -> Any:
 
 
 def args_min_severity() -> str:
-    """The severity at which weak supervision calls an entity risky."""
-    return os.environ.get("FIN_KG_GNN_LABEL_SEVERITY", "major")
+    """The severity at which weak supervision calls an entity risky.
+
+    Resolved through :class:`GnnSettings` so the variable is declared,
+    validated and cached like every other setting. The function signature is
+    kept stable for existing callers.
+    """
+    from fin_kg.config.settings import get_settings
+
+    return get_settings().gnn.label_severity
 
 
 def cmd_gnn_load(args: argparse.Namespace) -> int:
